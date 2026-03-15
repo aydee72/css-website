@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CSS Drill Importer</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      background: #f7f7f7;
+      color: #222;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 1100px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    }
+    h1 {
+      margin-top: 0;
+    }
+    .row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    button {
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 8px;
+      cursor: pointer;
+      background: #111;
+      color: #fff;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .secondary {
+      background: #666;
+    }
+    .status {
+      margin: 12px 0;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #eef3ff;
+      white-space: pre-wrap;
+    }
+    .warn {
+      background: #fff4d6;
+    }
+    .error {
+      background: #ffe2e2;
+    }
+    .ok {
+      background: #e3f7e8;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      background: #fff;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+      vertical-align: top;
+      font-size: 14px;
+    }
+    th {
+      background: #fafafa;
+    }
+    .small {
+      font-size: 13px;
+      color: #555;
+    }
+    .mono {
+      font-family: Menlo, Consolas, monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Drill Importer</h1>
+    <p class="small">
+      Upload a CSV with headers:
+      <span class="mono">code,title,description,category</span>
+    </p>
+
+    <div class="row">
+      <input type="file" id="fileInput" accept=".csv" />
+      <button id="previewBtn">Preview New Drills</button>
+      <button id="importBtn" disabled>Import New Drills</button>
+      <button id="downloadTemplateBtn" class="secondary">Download CSV Template</button>
+    </div>
+
+    <div id="status" class="status">Waiting for file.</div>
+
+    <div class="small" id="summary"></div>
+
+    <table id="previewTable" style="display:none;">
+      <thead>
+        <tr>
+          <th style="width:120px;">Code</th>
+          <th style="width:260px;">Title</th>
+          <th>Description</th>
+          <th style="width:140px;">Category</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+    // =========================
+    // CONFIG
+    // =========================
+    const SUPABASE_URL = "https://zfyveyvtafcfkmmfgzjc.supabase.co";
+const SUPABASE_ANON = "sb_publishable_MYAyOVxrqvncoLbQ9TKAvQ_EkWEFaoC";
+
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+    // =========================
+    // STATE
+    // =========================
+    const state = {
+      parsedRows: [],
+      newRows: [],
+      existingCodes: new Set(),
+      duplicateCodesInFile: [],
+    };
+
+    // =========================
+    // ELEMENTS
+    // =========================
+    const fileInput = document.getElementById("fileInput");
+    const previewBtn = document.getElementById("previewBtn");
+    const importBtn = document.getElementById("importBtn");
+    const downloadTemplateBtn = document.getElementById("downloadTemplateBtn");
+    const statusEl = document.getElementById("status");
+    const summaryEl = document.getElementById("summary");
+    const previewTable = document.getElementById("previewTable");
+    const previewTbody = previewTable.querySelector("tbody");
+
+    // =========================
+    // HELPERS
+    // =========================
+    function setStatus(message, kind = "") {
+      statusEl.textContent = message;
+      statusEl.className = "status";
+      if (kind) statusEl.classList.add(kind);
+    }
+
+    function normalizeCode(value) {
+      return String(value || "").trim().toUpperCase();
+    }
+
+    function cleanText(value) {
+      return String(value || "").trim();
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function parseCsvLine(line) {
+      const result = [];
+      let current = "";
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        const next = line[i + 1];
+
+        if (ch === '"') {
+          if (inQuotes && next === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (ch === "," && !inQuotes) {
+          result.push(current);
+          current = "";
+        } else {
+          current += ch;
+        }
+      }
+
+      result.push(current);
+      return result;
+    }
+
+    function parseCsv(text) {
+      const lines = text
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .split("\n")
+        .filter(line => line.trim() !== "");
+
+      if (lines.length < 2) {
+        throw new Error("CSV must contain a header row and at least one data row.");
+      }
+
+      const headers = parseCsvLine(lines[0]).map(h => h.trim().toLowerCase());
+
+      const required = ["code", "title", "description", "category"];
+      for (const col of required) {
+        if (!headers.includes(col)) {
+          throw new Error(`Missing required column: ${col}`);
+        }
+      }
+
+      const idx = {
+        code: headers.indexOf("code"),
+        title: headers.indexOf("title"),
+        description: headers.indexOf("description"),
+        category: headers.indexOf("category"),
+      };
+
+      const rows = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const cells = parseCsvLine(lines[i]);
+
+        const row = {
+          code: cleanText(cells[idx.code]),
+          title: cleanText(cells[idx.title]),
+          description: cleanText(cells[idx.description]),
+          category: cleanText(cells[idx.category]) || null,
+        };
+
+        if (!row.code) continue;
+
+        rows.push(row);
+      }
+
+      return rows;
+    }
+
+    async function readFileAsText(file) {
+      return await file.text();
+    }
+
+    async function fetchExistingDrillCodes() {
+      const existing = new Set();
+      let from = 0;
+      const pageSize = 1000;
+
+      while (true) {
+        const to = from + pageSize - 1;
+        const { data, error } = await supabaseClient
+          .from("drills")
+          .select("code")
+          .range(from, to);
+
+        if (error) {
+          throw error;
+        }
+
+        if (!data || data.length === 0) {
+          break;
+        }
+
+        for (const row of data) {
+          existing.add(normalizeCode(row.code));
+        }
+
+        if (data.length < pageSize) {
+          break;
+        }
+
+        from += pageSize;
+      }
+
+      return existing;
+    }
+
+    function buildPreview(parsedRows, existingCodes) {
+      const seenInFile = new Set();
+      const duplicateCodesInFile = [];
+      const newRows = [];
+
+      for (const row of parsedRows) {
+        const normalized = normalizeCode(row.code);
+        if (!normalized) continue;
+
+        if (seenInFile.has(normalized)) {
+          duplicateCodesInFile.push(normalized);
+          continue;
+        }
+
+        seenInFile.add(normalized);
+
+        if (!existingCodes.has(normalized)) {
+          newRows.push({
+            code: row.code.trim(),
+            title: row.title || row.code.trim(),
+            description: row.description || "",
+            category: row.category || null,
+          });
+        }
+      }
+
+      return { newRows, duplicateCodesInFile };
+    }
+
+    function renderPreview(rows) {
+      previewTbody.innerHTML = "";
+
+      if (!rows.length) {
+        previewTable.style.display = "none";
+        return;
+      }
+
+      previewTable.style.display = "";
+
+      for (const row of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="mono">${escapeHtml(row.code)}</td>
+          <td>${escapeHtml(row.title || "")}</td>
+          <td>${escapeHtml(row.description || "")}</td>
+          <td>${escapeHtml(row.category || "")}</td>
+        `;
+        previewTbody.appendChild(tr);
+      }
+    }
+
+    function downloadTemplate() {
+      const csv = [
+        "code,title,description,category",
+        '"LAB","Late Apex Brackets","Late Apex Brackets drill",""',
+        '"2SBF","2-Step Back & Forth","Scan back and forth from turn point to apex then beyond",""'
+      ].join("\n");
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "drills_template.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    // =========================
+    // ACTIONS
+    // =========================
+    async function handlePreview() {
+      try {
+        importBtn.disabled = true;
+        summaryEl.textContent = "";
+        renderPreview([]);
+        setStatus("Reading file...");
+
+        const file = fileInput.files?.[0];
+        if (!file) {
+          setStatus("Please choose a CSV file first.", "warn");
+          return;
+        }
+
+        const text = await readFileAsText(file);
+        const parsedRows = parseCsv(text);
+
+        setStatus("Loading existing drill codes from Supabase...");
+        const existingCodes = await fetchExistingDrillCodes();
+
+        const { newRows, duplicateCodesInFile } = buildPreview(parsedRows, existingCodes);
+
+        state.parsedRows = parsedRows;
+        state.existingCodes = existingCodes;
+        state.newRows = newRows;
+        state.duplicateCodesInFile = duplicateCodesInFile;
+
+        renderPreview(newRows);
+
+        let msg = "";
+        msg += `File rows parsed: ${parsedRows.length}\n`;
+        msg += `Existing drill codes in database: ${existingCodes.size}\n`;
+        msg += `New drills ready to insert: ${newRows.length}\n`;
+
+        if (duplicateCodesInFile.length) {
+          msg += `Duplicate codes inside file skipped: ${[...new Set(duplicateCodesInFile)].join(", ")}`;
+          setStatus(msg, "warn");
+        } else {
+          setStatus(msg, "ok");
+        }
+
+        summaryEl.textContent =
+          newRows.length > 0
+            ? "Preview shows only rows that are not already in the database."
+            : "No new drills found. Everything in this file already exists, or duplicates were skipped.";
+
+        importBtn.disabled = newRows.length === 0;
+      } catch (err) {
+        console.error(err);
+        setStatus(`Preview failed: ${err.message || err}`, "error");
+      }
+    }
+
+    async function handleImport() {
+      try {
+        if (!state.newRows.length) {
+          setStatus("Nothing to import.", "warn");
+          return;
+        }
+
+        importBtn.disabled = true;
+        previewBtn.disabled = true;
+
+        setStatus(`Importing ${state.newRows.length} new drills...`);
+
+        const batchSize = 200;
+        let inserted = 0;
+
+        for (let i = 0; i < state.newRows.length; i += batchSize) {
+          const chunk = state.newRows.slice(i, i + batchSize);
+
+          const { error } = await supabaseClient
+            .from("drills")
+            .insert(chunk);
+
+          if (error) {
+            throw error;
+          }
+
+          inserted += chunk.length;
+          setStatus(`Imported ${inserted} of ${state.newRows.length} new drills...`);
+        }
+
+        setStatus(`Import complete. Added ${inserted} new drills.`, "ok");
+        summaryEl.textContent = "Re-run preview with the same file and it should show zero remaining new drills.";
+
+        state.newRows = [];
+        renderPreview([]);
+      } catch (err) {
+        console.error(err);
+        setStatus(`Import failed: ${err.message || err}`, "error");
+      } finally {
+        previewBtn.disabled = false;
+        importBtn.disabled = true;
+      }
+    }
+
+    // =========================
+    // EVENTS
+    // =========================
+    previewBtn.addEventListener("click", handlePreview);
+    importBtn.addEventListener("click", handleImport);
+    downloadTemplateBtn.addEventListener("click", downloadTemplate);
+  </script>
+</body>
+</html>

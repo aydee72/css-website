@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CSS Consultant Drill Planner</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-left">
+        <a class="back-link" href="/">◀ Menu</a>
+        <h1>Consultant Drill Planner</h1>
+      </div>
+
+      <div class="topbar-right">
+        <label class="file-btn">
+          Import CSV
+          <input id="csvFileInput" type="file" accept=".csv,text/csv" hidden />
+        </label>
+        <button id="refreshBtn" class="icon-btn" type="button">↻</button>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="panel">
+        <div class="panel-row">
+          <div class="field">
+            <label for="eventSelect">Event</label>
+            <select id="eventSelect">
+              <option value="">Loading events…</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="statusArea" class="status-area"></div>
+        <div id="csvInfo" class="csv-info"></div>
+      </section>
+
+      <section id="board" class="board"></section>
+    </main>
+  </div>
+
+  <div id="editModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="modalTitle">Edit Ride</h2>
+      </div>
+
+      <p class="modal-hint">
+        Choose an official drill below or type a custom entry like SSLA T1+T12.
+      </p>
+
+      <div class="modal-body">
+        <label class="field">
+          <span>Drill code or custom entry</span>
+          <input id="editValue" type="text" placeholder="SSLA or custom drill…" />
+        </label>
+
+        <label class="field">
+          <span>Search drills</span>
+          <input id="drillSearch" type="text" placeholder="Search drills…" />
+        </label>
+
+        <label class="field">
+          <span>Custom drill description for coach</span>
+          <textarea id="editCustomDescription" rows="4" placeholder="Custom drill description for coach…"></textarea>
+        </label>
+
+        <div class="picker-header">
+          <div id="drillCount">Drills: 0</div>
+          <button id="clearTextBtn" class="chip-btn" type="button">Clear text</button>
+        </div>
+
+        <div id="drillList" class="drill-list"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="cancelBtn" class="secondary-btn" type="button">Cancel</button>
+        <button id="saveBtn" class="primary-btn" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

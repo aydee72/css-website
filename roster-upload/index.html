@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CSSApp Roster Upload</title>
+  <link rel="stylesheet" href="./styles.css?v=20260220-1" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>CSSApp Roster Upload</h1>
+    <p class="muted">Today + future events (Sydney). Upload a CSV once — all tablets update automatically.</p>
+
+    <div class="card">
+      <label class="lbl">Supabase Events (today + future)</label>
+      <select id="eventSelect"></select>
+      <div class="row">
+        <button id="refreshEvents">Refresh Events</button>
+        <span id="eventStatus" class="muted"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <label class="lbl">CSV File</label>
+      <input id="csvFile" type="file" accept=".csv,text/csv" />
+      <label class="lbl" style="margin-top:12px;">Password</label>
+      <input id="pw" type="password" placeholder="Shared password" />
+
+      <div class="row" style="margin-top:14px;">
+        <button id="btnPreview">Preview</button>
+        <button id="btnCommit" class="danger" disabled>Commit Import (Replaces roster)</button>
+        <span id="status" class="muted"></span>
+      </div>
+    </div>
+
+    <div id="preview" class="card" style="display:none;">
+      <h2>Preview</h2>
+      <div id="summary" class="muted"></div>
+
+      <div id="warningsBox" style="display:none;">
+        <h3>Warnings</h3>
+        <ul id="warnings"></ul>
+      </div>
+
+      <div id="conflictsBox" style="display:none;">
+        <h3>Duplicate-name checks</h3>
+        <p class="muted">For any matching name, choose an existing person or force “Create new”.</p>
+        <div id="conflicts"></div>
+      </div>
+    </div>
+
+    <div class="footer muted">
+      Tip: CSV headers supported: COACH, bike#, student, ride1..ride10
+    </div>
+  </div>
+
+  <script src="./app.js?v=20260220-1"></script>
+
+</body>
+</html>
