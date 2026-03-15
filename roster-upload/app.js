@@ -10,6 +10,74 @@ const el = (id) => document.getElementById(id);
 
 console.log("CSS Roster Upload app.js loaded: 20260307-2");
 
+function parseCsvLine(line) {
+  const cells = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (ch === "," && !inQuotes) {
+      cells.push(current);
+      current = "";
+      continue;
+    }
+
+    current += ch;
+  }
+
+  cells.push(current);
+  return cells;
+}
+
+function escapeCsvCell(cell) {
+  const value = String(cell ?? "");
+  if (!/[",\n\r]/.test(value)) return value;
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function normalizeGroupColumnInCsv(csvText) {
+  const newline = csvText.includes("\r\n") ? "\r\n" : "\n";
+  const lines = csvText.split(/\r?\n/);
+
+  if (!lines.length) return csvText;
+
+  const header = parseCsvLine(lines[0]);
+  const groupIndex = header.findIndex((h) => String(h).trim().toLowerCase() === "group");
+
+  // No group column in this upload. Keep payload unchanged.
+  if (groupIndex === -1) return csvText;
+
+  const out = [header.map(escapeCsvCell).join(",")];
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === "") {
+      out.push("");
+      continue;
+    }
+
+    const cols = parseCsvLine(line);
+    while (cols.length <= groupIndex) cols.push("");
+
+    cols[groupIndex] = String(cols[groupIndex] ?? "").trim().toUpperCase();
+    out.push(cols.map(escapeCsvCell).join(","));
+  }
+
+  return out.join(newline);
+}
+
 function todaySydneyYYYYMMDD() {
   const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Australia/Sydney",
@@ -249,7 +317,7 @@ async function preview() {
   if (!pw) return setStatus("Enter password.");
 
   try {
-    const csvText = await readFileText(file);
+    const csvText = normalizeGroupColumnInCsv(await readFileText(file));
     const data = await callImport("preview", { eventId, csvText }, pw);
 
     lastPreview = {
