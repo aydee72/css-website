@@ -225,11 +225,13 @@ async function loadRoster() {
         id,
         coach,
         bike_no,
+        group,
         person:people(id,full_name,last_drill_text),
         assignments:assignments(id,enrollment_id,ride_no,drill_code,custom_text,custom_description)
       `)
       .eq("event_id", state.selectedEventId)
       .order("coach", { ascending: true })
+      .order("group", { ascending: true, nullsFirst: false })
       .order("bike_no", { ascending: true });
 
     if (error) throw error;
