@@ -78,6 +78,41 @@ function normalizeGroupColumnInCsv(csvText) {
   return out.join(newline);
 }
 
+function normalizeGroupValue(value) {
+  const trimmed = String(value ?? "").trim();
+  return trimmed ? trimmed.toUpperCase() : null;
+}
+
+function parseCsvRowsForImport(csvText) {
+  const lines = String(csvText ?? "").split(/\r?\n/);
+  if (!lines.length) return [];
+
+  const header = parseCsvLine(lines[0]);
+  const out = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+
+    const cols = parseCsvLine(line);
+    const row = {};
+
+    for (let j = 0; j < header.length; j++) {
+      const key = String(header[j] ?? "").trim();
+      if (!key) continue;
+      row[key] = String(cols[j] ?? "").trim();
+    }
+
+    if (Object.prototype.hasOwnProperty.call(row, "group")) {
+      row.group = normalizeGroupValue(row.group);
+    }
+
+    out.push(row);
+  }
+
+  return out;
+}
+
 function todaySydneyYYYYMMDD() {
   const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Australia/Sydney",
@@ -318,11 +353,13 @@ async function preview() {
 
   try {
     const csvText = normalizeGroupColumnInCsv(await readFileText(file));
-    const data = await callImport("preview", { eventId, csvText }, pw);
+    const importRows = parseCsvRowsForImport(csvText);
+    const data = await callImport("preview", { eventId, csvText, rows: importRows }, pw);
 
     lastPreview = {
       eventId,
       csvText,
+      rows: importRows,
       conflicts: data.conflicts || [],
     };
 
@@ -373,6 +410,7 @@ async function commit() {
       {
         eventId: lastPreview.eventId,
         csvText: lastPreview.csvText,
+        rows: lastPreview.rows,
         resolutions,
       },
       pw
