@@ -88,6 +88,7 @@ function parseCsvRowsForImport(csvText) {
   if (!lines.length) return [];
 
   const header = parseCsvLine(lines[0]);
+  const groupIndex = header.findIndex((h) => String(h ?? "").trim().toLowerCase() === "group");
   const out = [];
 
   for (let i = 1; i < lines.length; i++) {
@@ -103,9 +104,8 @@ function parseCsvRowsForImport(csvText) {
       row[key] = String(cols[j] ?? "").trim();
     }
 
-    if (Object.prototype.hasOwnProperty.call(row, "group")) {
-      row.group = normalizeGroupValue(row.group);
-    }
+    const groupValue = groupIndex >= 0 ? cols[groupIndex] : row.group;
+    row.group = normalizeGroupValue(groupValue);
 
     out.push(row);
   }
