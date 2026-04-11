@@ -385,7 +385,7 @@ async function loadRoster() {
         bike_no,
         person_id,
         event:events(id,event_date),
-        person:people(id,full_name,last_drill_text),
+        person:people(id,full_name,last_drill_text,group),
         assignments:assignments(id,enrollment_id,ride_no,drill_code,turn_text,is_video,is_bracketing,custom_text,custom_description,coach_audio_url)
       `)
       .eq("event_id", state.selectedEventId)
@@ -501,7 +501,8 @@ async function loadPreviousNdFallbacks() {
 
 function groupedRows() {
   const map = new Map();
-  const visibleRows = getVisibleRows(state.rows);
+  const orderedRows = state.rows.slice().sort(compareEnrollmentRows);
+  const visibleRows = getVisibleRows(orderedRows);
 
   for (const r of visibleRows) {
     const key = (r.coach ?? "Unassigned").trim() || "Unassigned";
@@ -513,13 +514,16 @@ function groupedRows() {
     compareText(coachA, coachB)
   );
 
-  return groups.map(([coach, list]) => [
-    coach,
-    list.slice().sort(compareEnrollmentRows),
-  ]);
+  return groups.map(([coach, list]) => [coach, list]);
 }
 
-const GROUP_COLORS = ["#4f6fa8", "#8a57bf", "#2f8f83", "#9b6a3a", "#607296", "#7c4a7f"];
+const GROUP_ORDER = { W: 0, Y: 1, G: 2 };
+const GROUP_THEME = {
+  W: { className: "student-group-w", label: "W" },
+  Y: { className: "student-group-y", label: "Y" },
+  G: { className: "student-group-g", label: "G" },
+};
+const DEFAULT_GROUP_THEME = { className: "student-group-default", label: "—" };
 
 function compareText(a, b) {
   return String(a ?? "").localeCompare(String(b ?? ""), undefined, {
@@ -537,9 +541,17 @@ function bikeSortValue(value) {
   return { isNumeric: false, numeric: Number.POSITIVE_INFINITY, text: raw };
 }
 
+function normalizeStudentGroup(value) {
+  const g = String(value ?? "").trim().toUpperCase();
+  return GROUP_ORDER[g] === undefined ? "" : g;
+}
+
 function compareEnrollmentRows(a, b) {
-  const coachCmp = compareText(a.coach ?? "Unassigned", b.coach ?? "Unassigned");
-  if (coachCmp !== 0) return coachCmp;
+  const groupA = normalizeStudentGroup(a.person?.group ?? a.group);
+  const groupB = normalizeStudentGroup(b.person?.group ?? b.group);
+  const rankA = GROUP_ORDER[groupA] ?? Number.POSITIVE_INFINITY;
+  const rankB = GROUP_ORDER[groupB] ?? Number.POSITIVE_INFINITY;
+  if (rankA !== rankB) return rankA - rankB;
 
   const bikeA = bikeSortValue(a.bike_no);
   const bikeB = bikeSortValue(b.bike_no);
@@ -553,6 +565,9 @@ function compareEnrollmentRows(a, b) {
 
   const bikeTextCmp = compareText(bikeA.text, bikeB.text);
   if (bikeTextCmp !== 0) return bikeTextCmp;
+
+  const coachCmp = compareText(a.coach ?? "Unassigned", b.coach ?? "Unassigned");
+  if (coachCmp !== 0) return coachCmp;
 
   return compareText(a.person?.full_name ?? "", b.person?.full_name ?? "");
 }
@@ -675,10 +690,11 @@ function renderBoard() {
   }
 
   els.board.innerHTML = groups
-    .map(([coach, list], groupIndex) => {
-      const groupColor = GROUP_COLORS[groupIndex % GROUP_COLORS.length];
+    .map(([coach, list]) => {
       const rowsHtml = list
         .map((r) => {
+          const studentGroup = normalizeStudentGroup(r.person?.group ?? r.group);
+          const theme = GROUP_THEME[studentGroup] ?? DEFAULT_GROUP_THEME;
           const rideCells = [...Array.from({ length: state.maxRideNo }, (_, i) => i + 1), 0]
   .map((rideNo) => {
               const val = getRideDisplay(r, rideNo);
@@ -710,10 +726,13 @@ return `
             .join("");
 
           return `
-            <div class="row">
+            <div class="row ${theme.className}">
               <div class="bike">${escapeHtml(r.bike_no ?? "-")}</div>
               <div class="row-main">
-                <div class="name">${escapeHtml(r.person?.full_name ?? "(missing person)")}</div>
+                <div class="name">
+                  ${escapeHtml(r.person?.full_name ?? "(missing person)")}
+                  <span class="group-pill">${escapeHtml(theme.label)}</span>
+                </div>
                 <div class="ride-row">${rideCells}</div>
                 ${
                   r.person?.last_drill_text
@@ -727,7 +746,7 @@ return `
         .join("");
 
       return `
-        <section class="group" style="--group-color: ${groupColor}">
+        <section class="group">
           <div class="group-title">${escapeHtml(coach)}</div>
           ${rowsHtml}
         </section>
