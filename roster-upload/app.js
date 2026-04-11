@@ -47,6 +47,11 @@ function escapeCsvCell(cell) {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
+function normalizeGroupValue(value) {
+  const trimmed = String(value ?? "").trim();
+  return trimmed ? trimmed.toUpperCase() : null;
+}
+
 function normalizeGroupColumnInCsv(csvText) {
   const newline = csvText.includes("\r\n") ? "\r\n" : "\n";
   const lines = csvText.split(/\r?\n/);
@@ -54,9 +59,10 @@ function normalizeGroupColumnInCsv(csvText) {
   if (!lines.length) return csvText;
 
   const header = parseCsvLine(lines[0]);
-  const groupIndex = header.findIndex((h) => String(h).trim().toLowerCase() === "group");
+  const groupIndex = header.findIndex(
+    (h) => String(h).trim().toLowerCase() === "group"
+  );
 
-  // No group column in this upload. Keep payload unchanged.
   if (groupIndex === -1) return csvText;
 
   const out = [header.map(escapeCsvCell).join(",")];
@@ -71,16 +77,11 @@ function normalizeGroupColumnInCsv(csvText) {
     const cols = parseCsvLine(line);
     while (cols.length <= groupIndex) cols.push("");
 
-    cols[groupIndex] = String(cols[groupIndex] ?? "").trim().toUpperCase();
+    cols[groupIndex] = normalizeGroupValue(cols[groupIndex]) ?? "";
     out.push(cols.map(escapeCsvCell).join(","));
   }
 
   return out.join(newline);
-}
-
-function normalizeGroupValue(value) {
-  const trimmed = String(value ?? "").trim();
-  return trimmed ? trimmed.toUpperCase() : null;
 }
 
 function parseCsvRowsForImport(csvText) {
@@ -88,7 +89,10 @@ function parseCsvRowsForImport(csvText) {
   if (!lines.length) return [];
 
   const header = parseCsvLine(lines[0]);
-  const groupIndex = header.findIndex((h) => String(h ?? "").trim().toLowerCase() === "group");
+  const groupIndex = header.findIndex(
+    (h) => String(h ?? "").trim().toLowerCase() === "group"
+  );
+
   const out = [];
 
   for (let i = 1; i < lines.length; i++) {
@@ -351,15 +355,16 @@ async function preview() {
   if (!file) return setStatus("Choose a CSV.");
   if (!pw) return setStatus("Enter password.");
 
-  try {
+
+      try {
     const csvText = normalizeGroupColumnInCsv(await readFileText(file));
-    const importRows = parseCsvRowsForImport(csvText);
-    const data = await callImport("preview", { eventId, csvText, rows: importRows }, pw);
+    const rows = parseCsvRowsForImport(csvText);
+    const data = await callImport("preview", { eventId, csvText, rows }, pw);
 
     lastPreview = {
       eventId,
       csvText,
-      rows: importRows,
+      rows,
       conflicts: data.conflicts || [],
     };
 
@@ -405,12 +410,12 @@ async function commit() {
 
   try {
     const resolutions = collectResolutions(lastPreview.conflicts);
-    const out = await callImport(
+        const out = await callImport(
       "commit",
       {
         eventId: lastPreview.eventId,
         csvText: lastPreview.csvText,
-        rows: lastPreview.rows,
+        rows: lastPreview.rows || [],
         resolutions,
       },
       pw

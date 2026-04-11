@@ -25,12 +25,17 @@
 
     <main class="page">
       <section class="panel">
-        <div class="panel-row">
+                <div class="panel-row">
           <div class="field">
             <label for="eventSelect">Event</label>
             <select id="eventSelect">
               <option value="">Loading events…</option>
             </select>
+          </div>
+
+          <div class="field field-toggle">
+            <label>&nbsp;</label>
+            <button id="togglePastEventsBtn" class="chip-btn" type="button">Show past events</button>
           </div>
         </div>
 
@@ -53,10 +58,30 @@
       </p>
 
       <div class="modal-body">
+        <div id="coachRecommendationBox" class="coach-rec-box hidden">
+          <div class="coach-rec-title">Coach recommendation</div>
+          <div id="coachRecommendationContent"></div>
+        </div>
+
+        <div id="coachAudioBox" class="coach-audio-box hidden">
+          <div class="coach-audio-title">Coach audio</div>
+          <audio id="coachAudioPlayer" controls preload="none"></audio>
+        </div>
+
         <label class="field">
           <span>Drill code or custom entry</span>
           <input id="editValue" type="text" placeholder="SSLA or custom drill…" />
         </label>
+
+        <label class="field">
+          <span>Turn(s)</span>
+          <input id="editTurnText" type="text" placeholder="T10 or T3+T4" />
+        </label>
+
+        <div class="toggle-row">
+          <button id="editIsVideoBtn" class="toggle-chip" type="button">Video</button>
+          <button id="editIsBracketingBtn" class="toggle-chip" type="button">Bracketing</button>
+        </div>
 
         <label class="field">
           <span>Search drills</span>

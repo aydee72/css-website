@@ -7,9 +7,11 @@ const state = {
   loading: false,
   err: "",
   events: [],
+  showPastEvents: false,
   selectedEventId: "",
   rows: [],
   assignByEnroll: {},
+  ndByPersonId: {},
   drills: [],
   drillsLoading: false,
   csvPreview: null,
@@ -19,21 +21,29 @@ const state = {
   editEnrollmentId: null,
   editRideNo: 1,
   editValue: "",
+  editTurnText: "",
+  editIsVideo: false,
+  editIsBracketing: false,
   editCustomDescription: "",
+  editCoachRecommendation: null,
   drillSearch: "",
   realtimeChannel: null,
 };
 
 const els = {
   eventSelect: document.getElementById("eventSelect"),
+  togglePastEventsBtn: document.getElementById("togglePastEventsBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
   board: document.getElementById("board"),
   statusArea: document.getElementById("statusArea"),
   csvInfo: document.getElementById("csvInfo"),
   csvFileInput: document.getElementById("csvFileInput"),
   editModal: document.getElementById("editModal"),
-  modalTitle: document.getElementById("modalTitle"),
+    modalTitle: document.getElementById("modalTitle"),
   editValue: document.getElementById("editValue"),
+  editTurnText: document.getElementById("editTurnText"),
+  editIsVideoBtn: document.getElementById("editIsVideoBtn"),
+  editIsBracketingBtn: document.getElementById("editIsBracketingBtn"),
   editCustomDescription: document.getElementById("editCustomDescription"),
   drillSearch: document.getElementById("drillSearch"),
   drillList: document.getElementById("drillList"),
@@ -69,6 +79,10 @@ function latestRideDisplay(assignments) {
   }
 
   return bestText || null;
+}
+
+function rideLabel(rideNo) {
+  return rideNo === 0 ? "N/D" : `R${rideNo}`;
 }
 
 function splitDrillValue(raw) {
@@ -151,19 +165,153 @@ function escapeHtml(str) {
     .replaceAll("'", "&#039;");
 }
 
+/* ===== Coach Recommendation Support ===== */
+
+const COACH_RECOMMENDATION_PREFIX = "[COACH_RECOMMENDATION]";
+
+function cleanText(input) {
+  return String(input ?? "").replace(/\r\n/g, "\n").trim();
+}
+
+function emptyRecommendation() {
+  return {
+    drill: "",
+    turnText: "",
+    isVideo: false,
+    isBracketing: false,
+    note: "",
+  };
+}
+
+function parseCoachRecommendation(customDescription) {
+  const lines = String(customDescription ?? "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const coachLine = lines.find((l) =>
+    l.startsWith(COACH_RECOMMENDATION_PREFIX)
+  );
+
+  const consultantDescription = lines
+    .filter((l) => !l.startsWith(COACH_RECOMMENDATION_PREFIX))
+    .join("\n")
+    .trim();
+
+  if (!coachLine) {
+    return { recommendation: null, consultantDescription };
+  }
+
+  const payload = coachLine
+    .slice(COACH_RECOMMENDATION_PREFIX.length)
+    .trim();
+
+  if (!payload) {
+    return { recommendation: null, consultantDescription };
+  }
+
+  if (!payload.startsWith("{")) {
+    const note = cleanText(payload);
+    return {
+      recommendation: note
+        ? { ...emptyRecommendation(), note }
+        : null,
+      consultantDescription,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(payload);
+
+    const recommendation = {
+      drill: cleanText(parsed?.drill),
+      turnText: cleanText(parsed?.turnText),
+      isVideo: !!parsed?.isVideo,
+      isBracketing: !!parsed?.isBracketing,
+      note: cleanText(parsed?.note),
+    };
+
+    const hasAny =
+      recommendation.drill ||
+      recommendation.turnText ||
+      recommendation.note ||
+      recommendation.isVideo ||
+      recommendation.isBracketing;
+
+    return {
+      recommendation: hasAny ? recommendation : null,
+      consultantDescription,
+    };
+  } catch {
+    const note = cleanText(payload);
+    return {
+      recommendation: note
+        ? { ...emptyRecommendation(), note }
+        : null,
+      consultantDescription,
+    };
+  }
+}
+
+function buildCustomDescriptionWithCoachRecommendation(
+  consultantDescription,
+  recommendation
+) {
+  const cleanConsultant = cleanText(consultantDescription);
+
+  const hasRecommendation =
+    recommendation &&
+    (cleanText(recommendation.drill) ||
+      cleanText(recommendation.turnText) ||
+      cleanText(recommendation.note) ||
+      recommendation.isVideo ||
+      recommendation.isBracketing);
+
+  const coachLine = hasRecommendation
+    ? `${COACH_RECOMMENDATION_PREFIX} ${JSON.stringify({
+        drill: cleanText(recommendation.drill),
+        turnText: cleanText(recommendation.turnText),
+        isVideo: !!recommendation.isVideo,
+        isBracketing: !!recommendation.isBracketing,
+        note: cleanText(recommendation.note),
+      })}`
+    : "";
+
+  const out = [cleanConsultant, coachLine]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+
+  return out || null;
+}
+
 async function loadEvents() {
   const today = new Date().toISOString().slice(0, 10);
 
-  const { data, error } = await supabaseClient
+  let query = supabaseClient
     .from("events")
     .select("id,code,name,event_date")
-    .gte("event_date", today)
     .order("event_date", { ascending: true });
+
+  if (!state.showPastEvents) {
+    query = query.gte("event_date", today);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
   state.events = data ?? [];
   renderEventSelect();
+  renderPastEventsToggle();
+}
+
+function renderPastEventsToggle() {
+  if (!els.togglePastEventsBtn) return;
+
+  els.togglePastEventsBtn.textContent = state.showPastEvents
+    ? "Hide past events"
+    : "Show past events";
 }
 
 function renderEventSelect() {
@@ -206,9 +354,10 @@ async function loadDrills() {
 }
 
 async function loadRoster() {
-  if (!state.selectedEventId) {
+    if (!state.selectedEventId) {
     state.rows = [];
     state.assignByEnroll = {};
+    state.ndByPersonId = {};
     renderBoard();
     setStatus();
     return;
@@ -221,17 +370,17 @@ async function loadRoster() {
   try {
     const { data, error } = await supabaseClient
       .from("enrollments")
-      .select(`
+            .select(`
         id,
         coach,
         bike_no,
-        group,
+        person_id,
+        event:events(id,event_date),
         person:people(id,full_name,last_drill_text),
-        assignments:assignments(id,enrollment_id,ride_no,drill_code,custom_text,custom_description)
+        assignments:assignments(id,enrollment_id,ride_no,drill_code,turn_text,is_video,is_bracketing,custom_text,custom_description,coach_audio_url)
       `)
       .eq("event_id", state.selectedEventId)
       .order("coach", { ascending: true })
-      .order("group", { ascending: true, nullsFirst: false })
       .order("bike_no", { ascending: true });
 
     if (error) throw error;
@@ -244,19 +393,98 @@ async function loadRoster() {
       const perRide = {};
       for (const a of list) {
         const n = Number(a.ride_no);
-        if (!Number.isFinite(n) || n <= 0 || n > 10) continue;
+        if (!Number.isFinite(n) || n < 0 || n > 10) continue;
         perRide[n] = a;
       }
       map[r.id] = perRide;
     }
 
-    state.assignByEnroll = map;
+        state.assignByEnroll = map;
+    await loadPreviousNdFallbacks();
   } catch (e) {
     state.err = String(e?.message ?? e ?? "Failed to load roster");
   } finally {
     state.loading = false;
     renderBoard();
     setStatus();
+  }
+}
+
+async function loadPreviousNdFallbacks() {
+  if (!state.selectedEventId) {
+    state.ndByPersonId = {};
+    return;
+  }
+
+  try {
+    const { data: eventRow, error: eventErr } = await supabaseClient
+      .from("events")
+      .select("id,event_date")
+      .eq("id", state.selectedEventId)
+      .maybeSingle();
+
+    if (eventErr) throw eventErr;
+
+    const currentEventDate = eventRow?.event_date;
+    if (!currentEventDate) {
+      state.ndByPersonId = {};
+      return;
+    }
+
+    const personIds = Array.from(
+      new Set(
+        (state.rows ?? [])
+          .map((r) => r.person?.id || r.person_id)
+          .filter(Boolean)
+      )
+    );
+
+    if (!personIds.length) {
+      state.ndByPersonId = {};
+      return;
+    }
+
+    const { data: prevAssignments, error: prevErr } = await supabaseClient
+      .from("assignments")
+      .select(`
+        ride_no,
+        drill_code,
+        custom_text,
+        enrollment:enrollments!inner(
+          person_id,
+          event:events!inner(event_date)
+        )
+      `)
+      .eq("ride_no", 0)
+      .in("enrollment.person_id", personIds)
+      .lt("enrollment.event.event_date", currentEventDate);
+
+    if (prevErr) throw prevErr;
+
+    const bestByPerson = {};
+
+    for (const row of prevAssignments ?? []) {
+      const personId = row?.enrollment?.person_id;
+      const eventDate = row?.enrollment?.event?.event_date;
+      const text = norm(row?.drill_code) || norm(row?.custom_text);
+
+      if (!personId || !eventDate || !text) continue;
+
+      const existing = bestByPerson[personId];
+      if (!existing || eventDate > existing.event_date) {
+        bestByPerson[personId] = { event_date: eventDate, text };
+      }
+    }
+
+    const map = {};
+    for (const [personId, info] of Object.entries(bestByPerson)) {
+      map[personId] = info.text;
+    }
+
+    state.ndByPersonId = map;
+  } catch (e) {
+    console.log("Failed to load previous N/D fallbacks:", e?.message ?? e);
+    state.ndByPersonId = {};
   }
 }
 
@@ -279,11 +507,45 @@ function getRideDisplay(enrollment, rideNo) {
 
   const hasAnySavedAssignments = Object.keys(perRide).length > 0;
 
-  if (rideNo === 1 && !val && !hasAnySavedAssignments && enrollment.person?.last_drill_text) {
-    return enrollment.person.last_drill_text;
+  if (rideNo === 1 && !val && !hasAnySavedAssignments) {
+    const personId = enrollment.person?.id ?? enrollment.person_id;
+
+    if (personId && state.ndByPersonId[personId]) {
+      return state.ndByPersonId[personId];
+    }
+
+    if (enrollment.person?.last_drill_text) {
+      return enrollment.person.last_drill_text;
+    }
   }
 
   return val;
+}
+
+function hasRideRecommendation(enrollmentId, rideNo) {
+  const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
+  if (!assignment) return false;
+
+  const parsed = parseCoachRecommendation(assignment?.custom_description);
+  return !!parsed.recommendation;
+}
+
+function hasRideAudio(enrollmentId, rideNo) {
+  const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
+  return !!assignment?.coach_audio_url;
+}
+
+async function resolveCoachAudioPlaybackUrl(storedValue) {
+  const value = String(storedValue ?? "").trim();
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return value;
+
+  const { data, error } = await supabaseClient.storage
+    .from("coach-audio")
+    .createSignedUrl(value, 60 * 60 * 8) // 8 hours
+
+  if (error) throw error;
+  return data?.signedUrl ?? "";
 }
 
 function renderBoard() {
@@ -303,20 +565,31 @@ function renderBoard() {
     .map(([coach, list]) => {
       const rowsHtml = list
         .map((r) => {
-          const rideCells = Array.from({ length: state.maxRideNo }, (_, i) => i + 1)
-            .map((rideNo) => {
+          const rideCells = [...Array.from({ length: state.maxRideNo }, (_, i) => i + 1), 0]
+  .map((rideNo) => {
               const val = getRideDisplay(r, rideNo);
-              const isEmpty = !norm(val);
+const isEmpty = !norm(val);
 
-              return `
-                <button
-                  class="cell ${isEmpty ? "" : "cell-on"}"
+const hasRecommendation = hasRideRecommendation(r.id, rideNo);
+const hasAudio = hasRideAudio(r.id, rideNo);
+
+const displayText = val || (hasRecommendation ? "REC" : "—");
+
+const icons = `
+  ${hasRecommendation ? `<span class="cell-icon rec">⭐</span>` : ""}
+  ${hasAudio ? `<span class="cell-icon audio">🔊</span>` : ""}
+`;
+
+return `
+  <button
+    class="cell ${isEmpty ? "" : "cell-on"} ${hasRecommendation ? "cell-rec" : ""}"
                   type="button"
                   data-enrollment-id="${escapeHtml(r.id)}"
                   data-ride-no="${rideNo}"
                 >
-                  <div class="cell-title">R${rideNo}</div>
-                  <div class="cell-val">${escapeHtml(val || "—")}</div>
+                  <div class="cell-title">${rideLabel(rideNo)}</div>
+                  <div class="cell-val">${escapeHtml(displayText)}</div>
+<div class="cell-icons">${icons}</div>
                 </button>
               `;
             })
@@ -378,10 +651,41 @@ function filteredDrills() {
 
 function renderDrillList() {
   const list = filteredDrills();
+  
 
   els.drillCount.textContent = state.drillsLoading
     ? "Loading drills…"
     : `Drills: ${list.length}`;
+    
+    function syncToggleButtons() {
+      els.editIsVideoBtn.classList.toggle("toggle-chip-on", !!state.editIsVideo);
+      els.editIsBracketingBtn.classList.toggle("toggle-chip-on", !!state.editIsBracketing);
+    }
+    function renderCoachRecommendation() {
+  const box = document.getElementById("coachRecommendationBox");
+  const content = document.getElementById("coachRecommendationContent");
+
+  if (!box || !content) return;
+
+  const rec = state.editCoachRecommendation;
+
+  if (!rec) {
+    box.classList.add("hidden");
+    content.innerHTML = "";
+    return;
+  }
+
+  const lines = [];
+
+  if (rec.drill) lines.push(`<div class="coach-rec-line">Drill: ${escapeHtml(rec.drill)}</div>`);
+  if (rec.turnText) lines.push(`<div class="coach-rec-line">Turn(s): ${escapeHtml(rec.turnText)}</div>`);
+  if (rec.isVideo) lines.push(`<div class="coach-rec-line">Video</div>`);
+  if (rec.isBracketing) lines.push(`<div class="coach-rec-line">Bracketing</div>`);
+  if (rec.note) lines.push(`<div class="coach-rec-line">Note: ${escapeHtml(rec.note)}</div>`);
+
+  content.innerHTML = lines.join("");
+  box.classList.remove("hidden");
+}
 
   if (state.drillsLoading) {
     els.drillList.innerHTML = `<div class="muted">Loading drills…</div>`;
@@ -420,11 +724,99 @@ function renderDrillList() {
   });
 }
 
+function syncToggleButtons() {
+  els.editIsVideoBtn.classList.toggle("toggle-chip-on", !!state.editIsVideo);
+  els.editIsBracketingBtn.classList.toggle("toggle-chip-on", !!state.editIsBracketing);
+}
+
+function renderCoachRecommendation() {
+  const box = document.getElementById("coachRecommendationBox");
+  const content = document.getElementById("coachRecommendationContent");
+
+  if (!box || !content) return;
+
+  const rec = state.editCoachRecommendation;
+
+  if (!rec) {
+    box.classList.add("hidden");
+    content.innerHTML = "";
+    return;
+  }
+
+  const lines = [];
+
+  if (rec.drill) {
+    lines.push(`<div class="coach-rec-line">Drill: ${escapeHtml(rec.drill)}</div>`);
+  }
+  if (rec.turnText) {
+    lines.push(`<div class="coach-rec-line">Turn(s): ${escapeHtml(rec.turnText)}</div>`);
+  }
+  if (rec.isVideo) {
+    lines.push(`<div class="coach-rec-line">Video</div>`);
+  }
+  if (rec.isBracketing) {
+    lines.push(`<div class="coach-rec-line">Bracketing</div>`);
+  }
+  if (rec.note) {
+    lines.push(`<div class="coach-rec-line">Note: ${escapeHtml(rec.note)}</div>`);
+  }
+
+  content.innerHTML = lines.join("");
+  box.classList.remove("hidden");
+}
+
+async function renderCoachAudio() {
+  const box = document.getElementById("coachAudioBox");
+  const player = document.getElementById("coachAudioPlayer");
+
+  if (!box || !player || !state.editEnrollmentId) return;
+
+  const enrollmentId = state.editEnrollmentId;
+  const rideNo = state.editRideNo;
+  const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
+  const audioUrl = assignment?.coach_audio_url || "";
+
+  if (!audioUrl) {
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+    box.classList.add("hidden");
+    return;
+  }
+
+  try {
+    const playbackUrl = await resolveCoachAudioPlaybackUrl(audioUrl);
+
+    if (state.editEnrollmentId !== enrollmentId || state.editRideNo !== rideNo) {
+      return;
+    }
+
+    if (!playbackUrl) {
+      throw new Error("Missing signed audio URL");
+    }
+
+    player.pause();
+    player.src = playbackUrl;
+    player.load();
+    box.classList.remove("hidden");
+  } catch (e) {
+    console.error("Failed to resolve coach audio playback URL:", e);
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+    box.classList.add("hidden");
+  }
+}
+
 function syncEditFields() {
   els.editValue.value = state.editValue;
+  els.editTurnText.value = state.editTurnText;
   els.editCustomDescription.value = state.editCustomDescription;
   els.drillSearch.value = state.drillSearch;
-  els.modalTitle.textContent = `Edit Ride ${state.editRideNo}`;
+  els.modalTitle.textContent = `Edit ${rideLabel(state.editRideNo)}`;
+  syncToggleButtons();
+  renderCoachRecommendation();
+  renderCoachAudio();
 }
 
 function openEdit(enrollmentId, rideNo, currentVal) {
@@ -433,8 +825,17 @@ function openEdit(enrollmentId, rideNo, currentVal) {
   state.editValue = currentVal ?? "";
 
   const existing = state.assignByEnroll[enrollmentId]?.[rideNo];
-  state.editCustomDescription = existing?.custom_description ?? "";
-  state.drillSearch = "";
+
+const parsed = parseCoachRecommendation(existing?.custom_description);
+
+state.editTurnText = existing?.turn_text ?? "";
+state.editIsVideo = !!existing?.is_video;
+state.editIsBracketing = !!existing?.is_bracketing;
+
+state.editCustomDescription = parsed.consultantDescription;
+state.editCoachRecommendation = parsed.recommendation;
+
+state.drillSearch = "";
 
   syncEditFields();
   renderDrillList();
@@ -446,18 +847,47 @@ function openEdit(enrollmentId, rideNo, currentVal) {
 function closeEdit() {
   state.editOpen = false;
   state.editEnrollmentId = null;
+  state.editValue = "";
+  state.editTurnText = "";
+  state.editIsVideo = false;
+  state.editIsBracketing = false;
   state.drillSearch = "";
   state.editCustomDescription = "";
+  state.editCoachRecommendation = null;
+
+  const player = document.getElementById("coachAudioPlayer");
+  if (player) {
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+  }
+
   els.editModal.classList.add("hidden");
 }
 
-async function upsertAssignment(enrollmentId, rideNo, value, customDescription) {
+async function upsertAssignment(
+  enrollmentId,
+  rideNo,
+  value,
+  turnText,
+  isVideo,
+  isBracketing,
+  customDescription
+) {
   const v = norm(value);
+
+  const existing = state.assignByEnroll[enrollmentId]?.[rideNo] ?? null;
+const parsedExisting = parseCoachRecommendation(existing?.custom_description);
+
+const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
+  norm(customDescription) || null,
+  parsedExisting.recommendation
+);
 
   const enrollment = state.rows.find((r) => r.id === enrollmentId);
   const personId = enrollment?.person?.id ?? null;
 
-  if (!v) {
+    if (!v) {
     const { error } = await supabaseClient
       .from("assignments")
       .delete()
@@ -496,13 +926,16 @@ async function upsertAssignment(enrollmentId, rideNo, value, customDescription) 
       custom_description = norm(customDescription) || null;
     }
 
-    const { error } = await supabaseClient.from("assignments").upsert(
+        const { error } = await supabaseClient.from("assignments").upsert(
       {
         enrollment_id: enrollmentId,
         ride_no: rideNo,
         drill_code,
+        turn_text: norm(turnText) || null,
+        is_video: !!isVideo,
+        is_bracketing: !!isBracketing,
         custom_text,
-        custom_description,
+        custom_description: mergedCustomDescription,
       },
       { onConflict: "enrollment_id,ride_no" }
     );
@@ -511,9 +944,9 @@ async function upsertAssignment(enrollmentId, rideNo, value, customDescription) 
   }
 
   if (personId) {
-    const { data: updatedAssignments, error: readErr } = await supabaseClient
+        const { data: updatedAssignments, error: readErr } = await supabaseClient
       .from("assignments")
-      .select("id,enrollment_id,ride_no,drill_code,custom_text,custom_description")
+            .select("id,enrollment_id,ride_no,drill_code,turn_text,is_video,is_bracketing,custom_text,custom_description,coach_audio_url")
       .eq("enrollment_id", enrollmentId)
       .order("ride_no", { ascending: true });
 
@@ -538,6 +971,9 @@ async function handleSaveEdit() {
       state.editEnrollmentId,
       state.editRideNo,
       state.editValue,
+      state.editTurnText,
+      state.editIsVideo,
+      state.editIsBracketing,
       state.editCustomDescription
     );
 
@@ -610,10 +1046,15 @@ async function connectRealtime() {
 }
 
 function wireEvents() {
-  els.eventSelect.addEventListener("change", async (e) => {
+    els.eventSelect.addEventListener("change", async (e) => {
     state.selectedEventId = e.target.value;
     await loadRoster();
     await connectRealtime();
+  });
+
+  els.togglePastEventsBtn.addEventListener("click", async () => {
+    state.showPastEvents = !state.showPastEvents;
+    await loadEvents();
   });
 
   els.refreshBtn.addEventListener("click", async () => {
@@ -627,11 +1068,25 @@ function wireEvents() {
     e.target.value = "";
   });
 
-  els.editValue.addEventListener("input", (e) => {
+    els.editValue.addEventListener("input", (e) => {
     state.editValue = e.target.value.toUpperCase();
   });
 
-  els.editCustomDescription.addEventListener("input", (e) => {
+  els.editTurnText.addEventListener("input", (e) => {
+    state.editTurnText = e.target.value.toUpperCase();
+  });
+
+  els.editIsVideoBtn.addEventListener("click", () => {
+    state.editIsVideo = !state.editIsVideo;
+    syncToggleButtons();
+  });
+
+  els.editIsBracketingBtn.addEventListener("click", () => {
+    state.editIsBracketing = !state.editIsBracketing;
+    syncToggleButtons();
+  });
+
+    els.editCustomDescription.addEventListener("input", (e) => {
     state.editCustomDescription = e.target.value;
   });
 
@@ -642,6 +1097,9 @@ function wireEvents() {
 
   els.clearTextBtn.addEventListener("click", () => {
     state.editValue = "";
+    state.editTurnText = "";
+    state.editIsVideo = false;
+    state.editIsBracketing = false;
     state.drillSearch = "";
     state.editCustomDescription = "";
     syncEditFields();
@@ -668,6 +1126,7 @@ async function init() {
 
   try {
     await loadEvents();
+    renderPastEventsToggle();
     await loadDrills();
 
     const params = new URLSearchParams(window.location.search);
