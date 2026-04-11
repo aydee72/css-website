@@ -382,10 +382,11 @@ async function loadRoster() {
             .select(`
         id,
         coach,
+        group,
         bike_no,
         person_id,
         event:events(id,event_date),
-        person:people(id,full_name,last_drill_text,group),
+        person:people(id,full_name,last_drill_text),
         assignments:assignments(id,enrollment_id,ride_no,drill_code,turn_text,is_video,is_bracketing,custom_text,custom_description,coach_audio_url)
       `)
       .eq("event_id", state.selectedEventId)
@@ -547,8 +548,8 @@ function normalizeStudentGroup(value) {
 }
 
 function compareEnrollmentRows(a, b) {
-  const groupA = normalizeStudentGroup(a.person?.group ?? a.group);
-  const groupB = normalizeStudentGroup(b.person?.group ?? b.group);
+  const groupA = normalizeStudentGroup(a.group);
+  const groupB = normalizeStudentGroup(b.group);
   const rankA = GROUP_ORDER[groupA] ?? Number.POSITIVE_INFINITY;
   const rankB = GROUP_ORDER[groupB] ?? Number.POSITIVE_INFINITY;
   if (rankA !== rankB) return rankA - rankB;
@@ -693,7 +694,7 @@ function renderBoard() {
     .map(([coach, list]) => {
       const rowsHtml = list
         .map((r) => {
-          const studentGroup = normalizeStudentGroup(r.person?.group ?? r.group);
+          const studentGroup = normalizeStudentGroup(r.group);
           const theme = GROUP_THEME[studentGroup] ?? DEFAULT_GROUP_THEME;
           const rideCells = [...Array.from({ length: state.maxRideNo }, (_, i) => i + 1), 0]
   .map((rideNo) => {
