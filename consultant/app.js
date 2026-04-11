@@ -17,6 +17,8 @@ const state = {
   csvPreview: null,
   csvWarnings: [],
   maxRideNo: 5,
+  hiddenStudentIdsByEvent: {},
+  filterModalOpen: false,
   editOpen: false,
   editEnrollmentId: null,
   editRideNo: 1,
@@ -32,6 +34,12 @@ const state = {
 
 const els = {
   eventSelect: document.getElementById("eventSelect"),
+  filterStudentsBtn: document.getElementById("filterStudentsBtn"),
+  studentFilterModal: document.getElementById("studentFilterModal"),
+  studentFilterList: document.getElementById("studentFilterList"),
+  filterSelectAllBtn: document.getElementById("filterSelectAllBtn"),
+  filterClearAllBtn: document.getElementById("filterClearAllBtn"),
+  filterDoneBtn: document.getElementById("filterDoneBtn"),
   togglePastEventsBtn: document.getElementById("togglePastEventsBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
   board: document.getElementById("board"),
@@ -354,11 +362,12 @@ async function loadDrills() {
 }
 
 async function loadRoster() {
-    if (!state.selectedEventId) {
+  if (!state.selectedEventId) {
     state.rows = [];
     state.assignByEnroll = {};
     state.ndByPersonId = {};
     renderBoard();
+    renderStudentFilterList();
     setStatus();
     return;
   }
@@ -385,7 +394,7 @@ async function loadRoster() {
 
     if (error) throw error;
 
-    state.rows = data ?? [];
+    state.rows = (data ?? []).slice().sort(compareEnrollmentRows);
 
     const map = {};
     for (const r of state.rows) {
@@ -399,7 +408,9 @@ async function loadRoster() {
       map[r.id] = perRide;
     }
 
-        state.assignByEnroll = map;
+    state.assignByEnroll = map;
+    ensureHiddenStudentIdsForEvent();
+    renderStudentFilterList();
     await loadPreviousNdFallbacks();
   } catch (e) {
     state.err = String(e?.message ?? e ?? "Failed to load roster");
@@ -490,14 +501,116 @@ async function loadPreviousNdFallbacks() {
 
 function groupedRows() {
   const map = new Map();
+  const visibleRows = getVisibleRows(state.rows);
 
-  for (const r of state.rows) {
+  for (const r of visibleRows) {
     const key = (r.coach ?? "Unassigned").trim() || "Unassigned";
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(r);
   }
 
-  return Array.from(map.entries());
+  const groups = Array.from(map.entries()).sort(([coachA], [coachB]) =>
+    compareText(coachA, coachB)
+  );
+
+  return groups.map(([coach, list]) => [
+    coach,
+    list.slice().sort(compareEnrollmentRows),
+  ]);
+}
+
+const GROUP_COLORS = ["#4f6fa8", "#8a57bf", "#2f8f83", "#9b6a3a", "#607296", "#7c4a7f"];
+
+function compareText(a, b) {
+  return String(a ?? "").localeCompare(String(b ?? ""), undefined, {
+    sensitivity: "base",
+    numeric: true,
+  });
+}
+
+function bikeSortValue(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return { isNumeric: false, numeric: Number.POSITIVE_INFINITY, text: "" };
+  if (/^\d+$/.test(raw)) {
+    return { isNumeric: true, numeric: Number(raw), text: raw };
+  }
+  return { isNumeric: false, numeric: Number.POSITIVE_INFINITY, text: raw };
+}
+
+function compareEnrollmentRows(a, b) {
+  const coachCmp = compareText(a.coach ?? "Unassigned", b.coach ?? "Unassigned");
+  if (coachCmp !== 0) return coachCmp;
+
+  const bikeA = bikeSortValue(a.bike_no);
+  const bikeB = bikeSortValue(b.bike_no);
+
+  if (bikeA.isNumeric && bikeB.isNumeric && bikeA.numeric !== bikeB.numeric) {
+    return bikeA.numeric - bikeB.numeric;
+  }
+  if (bikeA.isNumeric !== bikeB.isNumeric) {
+    return bikeA.isNumeric ? -1 : 1;
+  }
+
+  const bikeTextCmp = compareText(bikeA.text, bikeB.text);
+  if (bikeTextCmp !== 0) return bikeTextCmp;
+
+  return compareText(a.person?.full_name ?? "", b.person?.full_name ?? "");
+}
+
+function studentFilterStorageKey(eventId) {
+  return `consultant.hiddenStudents.${eventId}`;
+}
+
+function readHiddenStudentIds(eventId) {
+  if (!eventId) return new Set();
+  try {
+    const raw = window.localStorage.getItem(studentFilterStorageKey(eventId));
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter(Boolean).map((v) => String(v)));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeHiddenStudentIds(eventId) {
+  if (!eventId) return;
+  const set = state.hiddenStudentIdsByEvent[eventId] ?? new Set();
+  window.localStorage.setItem(studentFilterStorageKey(eventId), JSON.stringify(Array.from(set)));
+}
+
+function ensureHiddenStudentIdsForEvent() {
+  const eventId = state.selectedEventId;
+  if (!eventId) return;
+  if (!state.hiddenStudentIdsByEvent[eventId]) {
+    state.hiddenStudentIdsByEvent[eventId] = readHiddenStudentIds(eventId);
+  }
+
+  const validIds = new Set(
+    state.rows
+      .map((r) => String(r.person?.id ?? r.person_id ?? ""))
+      .filter(Boolean)
+  );
+
+  const next = new Set();
+  for (const id of state.hiddenStudentIdsByEvent[eventId]) {
+    if (validIds.has(id)) next.add(id);
+  }
+  state.hiddenStudentIdsByEvent[eventId] = next;
+  writeHiddenStudentIds(eventId);
+}
+
+function getVisibleRows(rows) {
+  const eventId = state.selectedEventId;
+  if (!eventId) return rows;
+  const hiddenSet = state.hiddenStudentIdsByEvent[eventId] ?? new Set();
+  if (!hiddenSet.size) return rows;
+
+  return rows.filter((r) => {
+    const personId = String(r.person?.id ?? r.person_id ?? "");
+    return personId && !hiddenSet.has(personId);
+  });
 }
 
 function getRideDisplay(enrollment, rideNo) {
@@ -562,7 +675,8 @@ function renderBoard() {
   }
 
   els.board.innerHTML = groups
-    .map(([coach, list]) => {
+    .map(([coach, list], groupIndex) => {
+      const groupColor = GROUP_COLORS[groupIndex % GROUP_COLORS.length];
       const rowsHtml = list
         .map((r) => {
           const rideCells = [...Array.from({ length: state.maxRideNo }, (_, i) => i + 1), 0]
@@ -613,7 +727,7 @@ return `
         .join("");
 
       return `
-        <section class="group">
+        <section class="group" style="--group-color: ${groupColor}">
           <div class="group-title">${escapeHtml(coach)}</div>
           ${rowsHtml}
         </section>
@@ -632,6 +746,99 @@ return `
       openEdit(enrollmentId, rideNo, currentVal);
     });
   });
+}
+
+function filterStudentsSortedRows() {
+  return state.rows.slice().sort(compareEnrollmentRows);
+}
+
+function isStudentVisible(personId) {
+  const eventId = state.selectedEventId;
+  if (!eventId) return true;
+  const hiddenSet = state.hiddenStudentIdsByEvent[eventId] ?? new Set();
+  return !hiddenSet.has(String(personId));
+}
+
+function renderStudentFilterList() {
+  if (!els.studentFilterList) return;
+
+  if (!state.selectedEventId) {
+    els.studentFilterList.innerHTML = `<div class="muted">Select an event first.</div>`;
+    return;
+  }
+
+  const rows = filterStudentsSortedRows();
+  if (!rows.length) {
+    els.studentFilterList.innerHTML = `<div class="muted">No students available for this event.</div>`;
+    return;
+  }
+
+  els.studentFilterList.innerHTML = rows
+    .map((row) => {
+      const personId = String(row.person?.id ?? row.person_id ?? "");
+      const checked = isStudentVisible(personId) ? "checked" : "";
+      const name = row.person?.full_name ?? "(missing person)";
+      const coach = (row.coach ?? "Unassigned").trim() || "Unassigned";
+
+      return `
+        <label class="student-filter-item">
+          <input type="checkbox" data-person-id="${escapeHtml(personId)}" ${checked} />
+          <span>${escapeHtml(name)}</span>
+          <span class="student-filter-meta">${escapeHtml(`${coach} · Bike ${row.bike_no ?? "-"}`)}</span>
+        </label>
+      `;
+    })
+    .join("");
+
+  els.studentFilterList.querySelectorAll("input[type='checkbox']").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const eventId = state.selectedEventId;
+      if (!eventId) return;
+      ensureHiddenStudentIdsForEvent();
+      const hiddenSet = state.hiddenStudentIdsByEvent[eventId];
+      const personId = cb.getAttribute("data-person-id") || "";
+
+      if (cb.checked) {
+        hiddenSet.delete(personId);
+      } else {
+        hiddenSet.add(personId);
+      }
+
+      writeHiddenStudentIds(eventId);
+      renderBoard();
+    });
+  });
+}
+
+function setAllStudentsVisible(visible) {
+  const eventId = state.selectedEventId;
+  if (!eventId) return;
+  ensureHiddenStudentIdsForEvent();
+
+  if (visible) {
+    state.hiddenStudentIdsByEvent[eventId] = new Set();
+  } else {
+    state.hiddenStudentIdsByEvent[eventId] = new Set(
+      state.rows
+        .map((r) => String(r.person?.id ?? r.person_id ?? ""))
+        .filter(Boolean)
+    );
+  }
+
+  writeHiddenStudentIds(eventId);
+  renderStudentFilterList();
+  renderBoard();
+}
+
+function openStudentFilterModal() {
+  state.filterModalOpen = true;
+  renderStudentFilterList();
+  els.studentFilterModal.classList.remove("hidden");
+}
+
+function closeStudentFilterModal() {
+  state.filterModalOpen = false;
+  els.studentFilterModal.classList.add("hidden");
 }
 
 function filteredDrills() {
@@ -1059,6 +1266,28 @@ function wireEvents() {
 
   els.refreshBtn.addEventListener("click", async () => {
     await loadRoster();
+  });
+
+  els.filterStudentsBtn.addEventListener("click", () => {
+    openStudentFilterModal();
+  });
+
+  els.filterSelectAllBtn.addEventListener("click", () => {
+    setAllStudentsVisible(true);
+  });
+
+  els.filterClearAllBtn.addEventListener("click", () => {
+    setAllStudentsVisible(false);
+  });
+
+  els.filterDoneBtn.addEventListener("click", () => {
+    closeStudentFilterModal();
+  });
+
+  els.studentFilterModal.addEventListener("click", (e) => {
+    if (e.target === els.studentFilterModal) {
+      closeStudentFilterModal();
+    }
   });
 
   els.csvFileInput.addEventListener("change", async (e) => {

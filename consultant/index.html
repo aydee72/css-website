@@ -25,12 +25,17 @@
 
     <main class="page">
       <section class="panel">
-                <div class="panel-row">
+        <div class="panel-row">
           <div class="field">
             <label for="eventSelect">Event</label>
             <select id="eventSelect">
               <option value="">Loading events…</option>
             </select>
+          </div>
+
+          <div class="field field-toggle">
+            <label>&nbsp;</label>
+            <button id="filterStudentsBtn" class="chip-btn" type="button">Filter Students</button>
           </div>
 
           <div class="field field-toggle">
@@ -45,6 +50,25 @@
 
       <section id="board" class="board"></section>
     </main>
+  </div>
+
+  <div id="studentFilterModal" class="modal hidden">
+    <div class="modal-card filter-modal-card">
+      <div class="modal-header">
+        <h2>Filter Students</h2>
+      </div>
+
+      <div class="filter-actions">
+        <button id="filterSelectAllBtn" class="chip-btn" type="button">Select All</button>
+        <button id="filterClearAllBtn" class="chip-btn" type="button">Clear All</button>
+      </div>
+
+      <div id="studentFilterList" class="student-filter-list"></div>
+
+      <div class="modal-footer">
+        <button id="filterDoneBtn" class="primary-btn" type="button">Done</button>
+      </div>
+    </div>
   </div>
 
   <div id="editModal" class="modal hidden">
