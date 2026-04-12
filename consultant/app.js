@@ -1283,6 +1283,8 @@ async function uploadConsultantAudio(file) {
 }
 
 function syncEditFields() {
+  const parsedEditDescription = parseCoachRecommendation(state.editCustomDescription);
+  state.editCustomDescription = parsedEditDescription.consultantDescription;
   els.editValue.value = state.editValue;
   els.editTurnText.value = state.editTurnText;
   els.editCustomDescription.value = state.editCustomDescription;
