@@ -854,7 +854,7 @@ function hasRideRecommendationPending(enrollmentId, rideNo) {
   const parsed = parseCoachRecommendation(assignment?.custom_description);
   const reviewedForRide = parsed.consultantReviewedForRides?.has(rideNo);
   const reviewed = !!reviewedForRide || !!parsed.consultantReviewedAny;
-  return !!parsed.recommendation && !!parsed.recommendationPending && !reviewed;
+  return !!parsed.recommendation && !reviewed;
 }
 
 function hasRideAudio(enrollmentId, rideNo) {
