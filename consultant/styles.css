@@ -180,15 +180,15 @@ textarea {
 }
 
 .student-group-w {
-  border-left-color: #4f6fa8;
+  border-left-color: #ffffff;
 }
 
 .student-group-y {
-  border-left-color: #b8962f;
+  border-left-color: #faee15;
 }
 
 .student-group-g {
-  border-left-color: #2f8f83;
+  border-left-color: #11c55e;
 }
 
 .student-group-default {
@@ -257,8 +257,8 @@ textarea {
 }
 
 .cell-on {
-  border-color: #3a6ea5;
-  background: #101622;
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.2);
 }
 
 .cell-rec {
