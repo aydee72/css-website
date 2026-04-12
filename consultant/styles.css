@@ -305,6 +305,10 @@ textarea {
   color: #7fb7ff;
 }
 
+.cell-icon.video {
+  color: #ffd36f;
+}
+
 .modal {
   position: fixed;
   inset: 0;
@@ -410,6 +414,21 @@ textarea {
   font-weight: 700;
   margin-top: 2px;
 }
+
+.coach-rec-confidence {
+  margin-top: 8px;
+  color: #d7c7ff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.coach-rec-confidence-detail {
+  margin-top: 4px;
+  color: #f2edff;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .coach-audio-box {
   border: 1px solid #3a6ea5;
   background: #101622;
@@ -426,6 +445,24 @@ textarea {
 
 #coachAudioPlayer {
   width: 100%;
+}
+
+#consultantAudioPlayer {
+  width: 100%;
+}
+
+.inline-check {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #cfd3ff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.consultant-audio-actions {
+  margin-top: 4px;
 }
 
 .hidden {
