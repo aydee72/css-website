@@ -37,6 +37,7 @@ const state = {
   editCoachVideoActioned: false,
   editCoachAudioPlayed: false,
   editConsultantAudioUrl: "",
+  editHiddenMetadataLines: [],
   drillSearch: "",
   realtimeChannel: null,
 };
@@ -193,6 +194,9 @@ const COACH_AUDIO_ACTIONED_PREFIX = "[COACH_AUDIO_ACTIONED]";
 const COACH_VIDEO_PENDING_PREFIX = "[COACH_VIDEO_PENDING]";
 const COACH_VIDEO_ACTIONED_PREFIX = "[COACH_VIDEO_ACTIONED]";
 const CONSULTANT_AUDIO_URL_PREFIX = "[CONSULTANT_AUDIO_URL]";
+const COACH_RECOMMENDATION_ACTIONED_AT_PREFIX = "[COACH_RECOMMENDATION_ACTIONED_AT]";
+const COACH_CONSULTANT_REVIEWED_FOR_PREFIX = "[COACH_CONSULTANT_REVIEWED_FOR]";
+const CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX = "[CONSULTANT_VIDEO_ACTIONED_FOR]";
 
 function cleanText(input) {
   return String(input ?? "").replace(/\r\n/g, "\n").trim();
@@ -222,18 +226,35 @@ function metadataLineValue(lines, prefix) {
   return line ? line.slice(prefix.length).trim() : "";
 }
 
+function isBracketMetadataLine(line) {
+  return /^\[[A-Z0-9_]+\](?:\s|$)/.test(String(line ?? "").trim());
+}
+
+function isRecommendationJsonPayload(line) {
+  const raw = String(line ?? "").trim();
+  if (!raw.startsWith("{") || !raw.endsWith("}")) return false;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+    return (
+      "drill" in parsed ||
+      "turnText" in parsed ||
+      "note" in parsed ||
+      "isVideo" in parsed ||
+      "isBracketing" in parsed
+    );
+  } catch {
+    return false;
+  }
+}
+
 function parseCoachRecommendation(customDescription) {
   const lines = String(customDescription ?? "")
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
 
-  const coachLine = lines.find((l) =>
-    l.startsWith(COACH_RECOMMENDATION_PREFIX)
-  );
-
   const hiddenPrefixes = [
-    COACH_RECOMMENDATION_PREFIX,
     COACH_RECOMMENDATION_PENDING_PREFIX,
     COACH_RECOMMENDATION_CONFIDENCE_PREFIX,
     COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX,
@@ -242,12 +263,36 @@ function parseCoachRecommendation(customDescription) {
     COACH_VIDEO_PENDING_PREFIX,
     COACH_VIDEO_ACTIONED_PREFIX,
     CONSULTANT_AUDIO_URL_PREFIX,
+    COACH_RECOMMENDATION_ACTIONED_AT_PREFIX,
+    COACH_CONSULTANT_REVIEWED_FOR_PREFIX,
+    CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX,
   ];
 
-  const consultantDescription = lines
-    .filter((l) => !hiddenPrefixes.some((p) => l.startsWith(p)))
-    .join("\n")
-    .trim();
+  const hiddenMetadataLines = [];
+  const visibleDescriptionLines = [];
+  let coachPayload = "";
+
+  for (const line of lines) {
+    if (line.startsWith(COACH_RECOMMENDATION_PREFIX)) {
+      coachPayload = line.slice(COACH_RECOMMENDATION_PREFIX.length).trim();
+      continue;
+    }
+
+    if (hiddenPrefixes.some((p) => line.startsWith(p)) || isBracketMetadataLine(line)) {
+      hiddenMetadataLines.push(line);
+      continue;
+    }
+
+    if (!coachPayload && isRecommendationJsonPayload(line)) {
+      coachPayload = line;
+      hiddenMetadataLines.push(line);
+      continue;
+    }
+
+    visibleDescriptionLines.push(line);
+  }
+
+  const consultantDescription = visibleDescriptionLines.join("\n").trim();
 
   const recommendationPending = parseBoolText(
     metadataLineValue(lines, COACH_RECOMMENDATION_PENDING_PREFIX)
@@ -274,7 +319,7 @@ function parseCoachRecommendation(customDescription) {
     metadataLineValue(lines, CONSULTANT_AUDIO_URL_PREFIX)
   );
 
-  if (!coachLine) {
+  if (!coachPayload) {
     return {
       recommendation: null,
       consultantDescription,
@@ -286,12 +331,11 @@ function parseCoachRecommendation(customDescription) {
       coachVideoPending,
       coachVideoActioned,
       consultantAudioUrl,
+      hiddenMetadataLines,
     };
   }
 
-  const payload = coachLine
-    .slice(COACH_RECOMMENDATION_PREFIX.length)
-    .trim();
+  const payload = coachPayload;
 
   if (!payload) {
     return {
@@ -305,6 +349,7 @@ function parseCoachRecommendation(customDescription) {
       coachVideoPending,
       coachVideoActioned,
       consultantAudioUrl,
+      hiddenMetadataLines,
     };
   }
 
@@ -365,6 +410,7 @@ function parseCoachRecommendation(customDescription) {
       coachVideoPending,
       coachVideoActioned,
       consultantAudioUrl,
+      hiddenMetadataLines,
     };
   } catch {
     const note = cleanText(payload);
@@ -381,6 +427,7 @@ function parseCoachRecommendation(customDescription) {
       coachVideoPending,
       coachVideoActioned,
       consultantAudioUrl,
+      hiddenMetadataLines,
     };
   }
 }
@@ -444,12 +491,38 @@ function buildCustomDescriptionWithCoachRecommendation(
     );
   }
 
-  const out = [cleanConsultant, coachLine, ...metadataLines]
+  const preservedHiddenMetadataLines = Array.isArray(metadata.hiddenMetadataLines)
+    ? metadata.hiddenMetadataLines.filter(
+        (line) =>
+          line &&
+          !line.startsWith(COACH_RECOMMENDATION_PREFIX) &&
+          !hiddenPrefixesForBuild().some((prefix) => line.startsWith(prefix)) &&
+          !isRecommendationJsonPayload(line)
+      )
+    : [];
+
+  const out = [cleanConsultant, coachLine, ...metadataLines, ...preservedHiddenMetadataLines]
     .filter(Boolean)
     .join("\n")
     .trim();
 
   return out || null;
+}
+
+function hiddenPrefixesForBuild() {
+  return [
+    COACH_RECOMMENDATION_PENDING_PREFIX,
+    COACH_RECOMMENDATION_CONFIDENCE_PREFIX,
+    COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX,
+    COACH_AUDIO_PENDING_PREFIX,
+    COACH_AUDIO_ACTIONED_PREFIX,
+    COACH_VIDEO_PENDING_PREFIX,
+    COACH_VIDEO_ACTIONED_PREFIX,
+    CONSULTANT_AUDIO_URL_PREFIX,
+    COACH_RECOMMENDATION_ACTIONED_AT_PREFIX,
+    COACH_CONSULTANT_REVIEWED_FOR_PREFIX,
+    CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX,
+  ];
 }
 
 async function loadEvents() {
@@ -1329,6 +1402,7 @@ state.editCoachVideoPending = !!parsed.coachVideoPending;
 state.editCoachVideoActioned = !!parsed.coachVideoActioned;
 state.editCoachAudioPlayed = false;
 state.editConsultantAudioUrl = parsed.consultantAudioUrl || "";
+state.editHiddenMetadataLines = parsed.hiddenMetadataLines || [];
 
 state.drillSearch = "";
 
@@ -1358,6 +1432,7 @@ function closeEdit() {
   state.editCoachVideoActioned = false;
   state.editCoachAudioPlayed = false;
   state.editConsultantAudioUrl = "";
+  state.editHiddenMetadataLines = [];
 
   const player = document.getElementById("coachAudioPlayer");
   if (player) {
@@ -1395,6 +1470,7 @@ const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
     coachVideoPending: state.editCoachVideoPending,
     coachVideoActioned: state.editCoachVideoActioned,
     consultantAudioUrl: state.editConsultantAudioUrl,
+    hiddenMetadataLines: state.editHiddenMetadataLines,
   }
 );
 
