@@ -35,6 +35,8 @@ const state = {
   editCoachAudioActioned: false,
   editCoachVideoPending: false,
   editCoachVideoActioned: false,
+  editCoachConsultantReviewedFor: "",
+  editConsultantVideoActionedFor: "",
   editCoachAudioPlayed: false,
   editConsultantAudioUrl: "",
   isRecording: false,
@@ -221,6 +223,10 @@ function parseBoolText(value) {
   return v === "1" || v === "true" || v === "yes";
 }
 
+function parseMetadataToken(value) {
+  return cleanText(value);
+}
+
 function findMetadataLine(lines, prefix) {
   return lines.find((l) => l.startsWith(prefix)) || "";
 }
@@ -319,9 +325,18 @@ function parseCoachRecommendation(customDescription) {
   const coachVideoActioned = parseBoolText(
     metadataLineValue(lines, COACH_VIDEO_ACTIONED_PREFIX)
   );
+  const coachConsultantReviewedFor = parseMetadataToken(
+    metadataLineValue(lines, COACH_CONSULTANT_REVIEWED_FOR_PREFIX)
+  );
+  const consultantVideoActionedFor = parseMetadataToken(
+    metadataLineValue(lines, CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX)
+  );
   const consultantAudioUrl = cleanText(
     metadataLineValue(lines, CONSULTANT_AUDIO_URL_PREFIX)
   );
+  const videoPendingFromRequestAction =
+    !!coachConsultantReviewedFor &&
+    coachConsultantReviewedFor !== consultantVideoActionedFor;
 
   if (!coachPayload) {
     return {
@@ -332,8 +347,10 @@ function parseCoachRecommendation(customDescription) {
       recommendationConfidenceDetail,
       coachAudioPending,
       coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      coachVideoPending: coachVideoPending || videoPendingFromRequestAction,
+      coachVideoActioned: coachVideoActioned || !!consultantVideoActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
       consultantAudioUrl,
       hiddenMetadataLines,
     };
@@ -350,8 +367,10 @@ function parseCoachRecommendation(customDescription) {
       recommendationConfidenceDetail,
       coachAudioPending,
       coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      coachVideoPending: coachVideoPending || videoPendingFromRequestAction,
+      coachVideoActioned: coachVideoActioned || !!consultantVideoActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
       consultantAudioUrl,
       hiddenMetadataLines,
     };
@@ -369,8 +388,10 @@ function parseCoachRecommendation(customDescription) {
       recommendationConfidenceDetail,
       coachAudioPending,
       coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      coachVideoPending: coachVideoPending || videoPendingFromRequestAction,
+      coachVideoActioned: coachVideoActioned || !!consultantVideoActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
       consultantAudioUrl,
     };
   }
@@ -411,8 +432,10 @@ function parseCoachRecommendation(customDescription) {
         recommendationConfidenceDetail || jsonConfidenceDetail,
       coachAudioPending,
       coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      coachVideoPending: coachVideoPending || videoPendingFromRequestAction,
+      coachVideoActioned: coachVideoActioned || !!consultantVideoActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
       consultantAudioUrl,
       hiddenMetadataLines,
     };
@@ -428,8 +451,10 @@ function parseCoachRecommendation(customDescription) {
       recommendationConfidenceDetail,
       coachAudioPending,
       coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      coachVideoPending: coachVideoPending || videoPendingFromRequestAction,
+      coachVideoActioned: coachVideoActioned || !!consultantVideoActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
       consultantAudioUrl,
       hiddenMetadataLines,
     };
@@ -488,6 +513,16 @@ function buildCustomDescriptionWithCoachRecommendation(
   }
   if (metadata.coachVideoActioned) {
     metadataLines.push(`${COACH_VIDEO_ACTIONED_PREFIX} true`);
+  }
+  if (cleanText(metadata.coachConsultantReviewedFor)) {
+    metadataLines.push(
+      `${COACH_CONSULTANT_REVIEWED_FOR_PREFIX} ${cleanText(metadata.coachConsultantReviewedFor)}`
+    );
+  }
+  if (cleanText(metadata.consultantVideoActionedFor)) {
+    metadataLines.push(
+      `${CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX} ${cleanText(metadata.consultantVideoActionedFor)}`
+    );
   }
   if (cleanText(metadata.consultantAudioUrl)) {
     metadataLines.push(
@@ -1514,6 +1549,8 @@ state.editCoachAudioPending = !!parsed.coachAudioPending;
 state.editCoachAudioActioned = !!parsed.coachAudioActioned;
 state.editCoachVideoPending = !!parsed.coachVideoPending;
 state.editCoachVideoActioned = !!parsed.coachVideoActioned;
+state.editCoachConsultantReviewedFor = parsed.coachConsultantReviewedFor || "";
+state.editConsultantVideoActionedFor = parsed.consultantVideoActionedFor || "";
 state.editCoachAudioPlayed = false;
 state.editConsultantAudioUrl = parsed.consultantAudioUrl || "";
 state.editHiddenMetadataLines = parsed.hiddenMetadataLines || [];
@@ -1547,6 +1584,8 @@ function closeEdit() {
   state.editCoachAudioActioned = false;
   state.editCoachVideoPending = false;
   state.editCoachVideoActioned = false;
+  state.editCoachConsultantReviewedFor = "";
+  state.editConsultantVideoActionedFor = "";
   state.editCoachAudioPlayed = false;
   state.editConsultantAudioUrl = "";
   state.editHiddenMetadataLines = [];
@@ -1592,6 +1631,8 @@ const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
     coachAudioActioned: state.editCoachAudioActioned,
     coachVideoPending: state.editCoachVideoPending,
     coachVideoActioned: state.editCoachVideoActioned,
+    coachConsultantReviewedFor: state.editCoachConsultantReviewedFor,
+    consultantVideoActionedFor: state.editConsultantVideoActionedFor,
     consultantAudioUrl: state.editConsultantAudioUrl,
     hiddenMetadataLines: state.editHiddenMetadataLines,
   }
@@ -1689,6 +1730,9 @@ async function handleSaveEdit() {
     }
     if (state.editCoachVideoPending && state.editCoachVideoActioned) {
       state.editCoachVideoPending = false;
+      if (state.editCoachConsultantReviewedFor) {
+        state.editConsultantVideoActionedFor = state.editCoachConsultantReviewedFor;
+      }
     }
 
     await upsertAssignment(
