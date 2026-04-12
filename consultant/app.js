@@ -35,8 +35,15 @@ const state = {
   editCoachAudioActioned: false,
   editCoachVideoPending: false,
   editCoachVideoActioned: false,
+  editCoachConsultantReviewedFor: "",
+  editConsultantVideoActionedFor: "",
   editCoachAudioPlayed: false,
   editConsultantAudioUrl: "",
+  isRecording: false,
+  recordedBlob: null,
+  recordedAudioUrl: "",
+  mediaRecorder: null,
+  editHiddenMetadataLines: [],
   drillSearch: "",
   realtimeChannel: null,
 };
@@ -193,6 +200,9 @@ const COACH_AUDIO_ACTIONED_PREFIX = "[COACH_AUDIO_ACTIONED]";
 const COACH_VIDEO_PENDING_PREFIX = "[COACH_VIDEO_PENDING]";
 const COACH_VIDEO_ACTIONED_PREFIX = "[COACH_VIDEO_ACTIONED]";
 const CONSULTANT_AUDIO_URL_PREFIX = "[CONSULTANT_AUDIO_URL]";
+const COACH_RECOMMENDATION_ACTIONED_AT_PREFIX = "[COACH_RECOMMENDATION_ACTIONED_AT]";
+const COACH_CONSULTANT_REVIEWED_FOR_PREFIX = "[COACH_CONSULTANT_REVIEWED_FOR]";
+const CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX = "[CONSULTANT_VIDEO_ACTIONED_FOR]";
 
 function cleanText(input) {
   return String(input ?? "").replace(/\r\n/g, "\n").trim();
@@ -213,6 +223,10 @@ function parseBoolText(value) {
   return v === "1" || v === "true" || v === "yes";
 }
 
+function parseMetadataToken(value) {
+  return cleanText(value);
+}
+
 function findMetadataLine(lines, prefix) {
   return lines.find((l) => l.startsWith(prefix)) || "";
 }
@@ -222,18 +236,35 @@ function metadataLineValue(lines, prefix) {
   return line ? line.slice(prefix.length).trim() : "";
 }
 
+function isBracketMetadataLine(line) {
+  return /^\[[A-Z0-9_]+\](?:\s|$)/.test(String(line ?? "").trim());
+}
+
+function isRecommendationJsonPayload(line) {
+  const raw = String(line ?? "").trim();
+  if (!raw.startsWith("{") || !raw.endsWith("}")) return false;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+    return (
+      "drill" in parsed ||
+      "turnText" in parsed ||
+      "note" in parsed ||
+      "isVideo" in parsed ||
+      "isBracketing" in parsed
+    );
+  } catch {
+    return false;
+  }
+}
+
 function parseCoachRecommendation(customDescription) {
   const lines = String(customDescription ?? "")
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
 
-  const coachLine = lines.find((l) =>
-    l.startsWith(COACH_RECOMMENDATION_PREFIX)
-  );
-
   const hiddenPrefixes = [
-    COACH_RECOMMENDATION_PREFIX,
     COACH_RECOMMENDATION_PENDING_PREFIX,
     COACH_RECOMMENDATION_CONFIDENCE_PREFIX,
     COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX,
@@ -242,12 +273,36 @@ function parseCoachRecommendation(customDescription) {
     COACH_VIDEO_PENDING_PREFIX,
     COACH_VIDEO_ACTIONED_PREFIX,
     CONSULTANT_AUDIO_URL_PREFIX,
+    COACH_RECOMMENDATION_ACTIONED_AT_PREFIX,
+    COACH_CONSULTANT_REVIEWED_FOR_PREFIX,
+    CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX,
   ];
 
-  const consultantDescription = lines
-    .filter((l) => !hiddenPrefixes.some((p) => l.startsWith(p)))
-    .join("\n")
-    .trim();
+  const hiddenMetadataLines = [];
+  const visibleDescriptionLines = [];
+  let coachPayload = "";
+
+  for (const line of lines) {
+    if (line.startsWith(COACH_RECOMMENDATION_PREFIX)) {
+      coachPayload = line.slice(COACH_RECOMMENDATION_PREFIX.length).trim();
+      continue;
+    }
+
+    if (hiddenPrefixes.some((p) => line.startsWith(p)) || isBracketMetadataLine(line)) {
+      hiddenMetadataLines.push(line);
+      continue;
+    }
+
+    if (!coachPayload && isRecommendationJsonPayload(line)) {
+      coachPayload = line;
+      hiddenMetadataLines.push(line);
+      continue;
+    }
+
+    visibleDescriptionLines.push(line);
+  }
+
+  const consultantDescription = visibleDescriptionLines.join("\n").trim();
 
   const recommendationPending = parseBoolText(
     metadataLineValue(lines, COACH_RECOMMENDATION_PENDING_PREFIX)
@@ -270,11 +325,20 @@ function parseCoachRecommendation(customDescription) {
   const coachVideoActioned = parseBoolText(
     metadataLineValue(lines, COACH_VIDEO_ACTIONED_PREFIX)
   );
+  const coachConsultantReviewedFor = parseMetadataToken(
+    metadataLineValue(lines, COACH_CONSULTANT_REVIEWED_FOR_PREFIX)
+  );
+  const consultantVideoActionedFor = parseMetadataToken(
+    metadataLineValue(lines, CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX)
+  );
   const consultantAudioUrl = cleanText(
     metadataLineValue(lines, CONSULTANT_AUDIO_URL_PREFIX)
   );
+  const videoPendingFromRequestAction =
+    !!coachConsultantReviewedFor &&
+    coachConsultantReviewedFor !== consultantVideoActionedFor;
 
-  if (!coachLine) {
+  if (!coachPayload) {
     return {
       recommendation: null,
       consultantDescription,
@@ -283,15 +347,16 @@ function parseCoachRecommendation(customDescription) {
       recommendationConfidenceDetail,
       coachAudioPending,
       coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      coachVideoPending: coachVideoPending || videoPendingFromRequestAction,
+      coachVideoActioned: coachVideoActioned || !!consultantVideoActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
       consultantAudioUrl,
+      hiddenMetadataLines,
     };
   }
 
-  const payload = coachLine
-    .slice(COACH_RECOMMENDATION_PREFIX.length)
-    .trim();
+  const payload = coachPayload;
 
   if (!payload) {
     return {
@@ -302,9 +367,12 @@ function parseCoachRecommendation(customDescription) {
       recommendationConfidenceDetail,
       coachAudioPending,
       coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      coachVideoPending: coachVideoPending || videoPendingFromRequestAction,
+      coachVideoActioned: coachVideoActioned || !!consultantVideoActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
       consultantAudioUrl,
+      hiddenMetadataLines,
     };
   }
 
@@ -320,8 +388,10 @@ function parseCoachRecommendation(customDescription) {
       recommendationConfidenceDetail,
       coachAudioPending,
       coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      coachVideoPending: coachVideoPending || videoPendingFromRequestAction,
+      coachVideoActioned: coachVideoActioned || !!consultantVideoActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
       consultantAudioUrl,
     };
   }
@@ -362,9 +432,12 @@ function parseCoachRecommendation(customDescription) {
         recommendationConfidenceDetail || jsonConfidenceDetail,
       coachAudioPending,
       coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      coachVideoPending: coachVideoPending || videoPendingFromRequestAction,
+      coachVideoActioned: coachVideoActioned || !!consultantVideoActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
       consultantAudioUrl,
+      hiddenMetadataLines,
     };
   } catch {
     const note = cleanText(payload);
@@ -378,9 +451,12 @@ function parseCoachRecommendation(customDescription) {
       recommendationConfidenceDetail,
       coachAudioPending,
       coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      coachVideoPending: coachVideoPending || videoPendingFromRequestAction,
+      coachVideoActioned: coachVideoActioned || !!consultantVideoActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
       consultantAudioUrl,
+      hiddenMetadataLines,
     };
   }
 }
@@ -438,18 +514,54 @@ function buildCustomDescriptionWithCoachRecommendation(
   if (metadata.coachVideoActioned) {
     metadataLines.push(`${COACH_VIDEO_ACTIONED_PREFIX} true`);
   }
+  if (cleanText(metadata.coachConsultantReviewedFor)) {
+    metadataLines.push(
+      `${COACH_CONSULTANT_REVIEWED_FOR_PREFIX} ${cleanText(metadata.coachConsultantReviewedFor)}`
+    );
+  }
+  if (cleanText(metadata.consultantVideoActionedFor)) {
+    metadataLines.push(
+      `${CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX} ${cleanText(metadata.consultantVideoActionedFor)}`
+    );
+  }
   if (cleanText(metadata.consultantAudioUrl)) {
     metadataLines.push(
       `${CONSULTANT_AUDIO_URL_PREFIX} ${cleanText(metadata.consultantAudioUrl)}`
     );
   }
 
-  const out = [cleanConsultant, coachLine, ...metadataLines]
+  const preservedHiddenMetadataLines = Array.isArray(metadata.hiddenMetadataLines)
+    ? metadata.hiddenMetadataLines.filter(
+        (line) =>
+          line &&
+          !line.startsWith(COACH_RECOMMENDATION_PREFIX) &&
+          !hiddenPrefixesForBuild().some((prefix) => line.startsWith(prefix)) &&
+          !isRecommendationJsonPayload(line)
+      )
+    : [];
+
+  const out = [cleanConsultant, coachLine, ...metadataLines, ...preservedHiddenMetadataLines]
     .filter(Boolean)
     .join("\n")
     .trim();
 
   return out || null;
+}
+
+function hiddenPrefixesForBuild() {
+  return [
+    COACH_RECOMMENDATION_PENDING_PREFIX,
+    COACH_RECOMMENDATION_CONFIDENCE_PREFIX,
+    COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX,
+    COACH_AUDIO_PENDING_PREFIX,
+    COACH_AUDIO_ACTIONED_PREFIX,
+    COACH_VIDEO_PENDING_PREFIX,
+    COACH_VIDEO_ACTIONED_PREFIX,
+    CONSULTANT_AUDIO_URL_PREFIX,
+    COACH_RECOMMENDATION_ACTIONED_AT_PREFIX,
+    COACH_CONSULTANT_REVIEWED_FOR_PREFIX,
+    CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX,
+  ];
 }
 
 async function loadEvents() {
@@ -1293,6 +1405,115 @@ async function uploadConsultantAudio(file) {
   await renderConsultantAudio();
 }
 
+function syncConsultantRecordingUI() {
+  const recordBtn = document.getElementById("consultantRecordBtn");
+  const stopBtn = document.getElementById("consultantStopBtn");
+  const playBtn = document.getElementById("consultantPlayBtn");
+  const uploadBtn = document.getElementById("consultantUploadBtn");
+  const previewBox = document.getElementById("consultantAudioPreviewBox");
+  const previewPlayer = document.getElementById("consultantAudioPreviewPlayer");
+
+  if (!recordBtn || !stopBtn || !playBtn || !uploadBtn || !previewBox || !previewPlayer) return;
+
+  recordBtn.disabled = state.isRecording;
+  stopBtn.disabled = !state.isRecording;
+
+  const hasRecording = !!state.recordedBlob && !!state.recordedAudioUrl;
+  playBtn.disabled = !hasRecording;
+  uploadBtn.disabled = !hasRecording || !state.editEnrollmentId;
+  previewBox.classList.toggle("hidden", !hasRecording);
+}
+
+function clearRecordedAudioState() {
+  const previewPlayer = document.getElementById("consultantAudioPreviewPlayer");
+
+  if (previewPlayer) {
+    previewPlayer.pause();
+    previewPlayer.removeAttribute("src");
+    previewPlayer.load();
+  }
+
+  if (state.recordedAudioUrl) {
+    URL.revokeObjectURL(state.recordedAudioUrl);
+  }
+
+  state.recordedBlob = null;
+  state.recordedAudioUrl = "";
+}
+
+async function startConsultantRecording() {
+  if (state.isRecording) return;
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const recordedChunks = [];
+
+  const recorder = new MediaRecorder(stream);
+  state.mediaRecorder = recorder;
+  state.isRecording = true;
+  clearRecordedAudioState();
+  syncConsultantRecordingUI();
+
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data && event.data.size > 0) {
+      recordedChunks.push(event.data);
+    }
+  });
+
+  recorder.addEventListener("stop", () => {
+    stream.getTracks().forEach((track) => track.stop());
+
+    if (!state.editOpen) {
+      state.mediaRecorder = null;
+      state.isRecording = false;
+      syncConsultantRecordingUI();
+      return;
+    }
+
+    const type = recorder.mimeType || "audio/webm";
+    const blob = new Blob(recordedChunks, { type });
+    state.recordedBlob = blob;
+    state.recordedAudioUrl = URL.createObjectURL(blob);
+
+    const previewPlayer = document.getElementById("consultantAudioPreviewPlayer");
+    if (previewPlayer) {
+      previewPlayer.pause();
+      previewPlayer.src = state.recordedAudioUrl;
+      previewPlayer.load();
+    }
+
+    state.mediaRecorder = null;
+    state.isRecording = false;
+    syncConsultantRecordingUI();
+  });
+
+  recorder.addEventListener("error", () => {
+    stream.getTracks().forEach((track) => track.stop());
+    state.mediaRecorder = null;
+    state.isRecording = false;
+    syncConsultantRecordingUI();
+  });
+
+  recorder.start();
+}
+
+function stopConsultantRecording() {
+  if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
+    state.mediaRecorder.stop();
+  }
+}
+
+async function uploadRecordedConsultantAudio() {
+  if (!state.recordedBlob || !state.editEnrollmentId) return;
+
+  const mimeType = state.recordedBlob.type || "audio/webm";
+  const ext = mimeType.includes("mp4") ? "m4a" : "webm";
+  const file = new File([state.recordedBlob], `consultant-recording-${Date.now()}.${ext}`, {
+    type: mimeType,
+  });
+
+  await uploadConsultantAudio(file);
+}
+
 function syncEditFields() {
   els.editValue.value = state.editValue;
   els.editTurnText.value = state.editTurnText;
@@ -1303,6 +1524,7 @@ function syncEditFields() {
   renderCoachRecommendation();
   renderCoachAudio();
   renderConsultantAudio();
+  syncConsultantRecordingUI();
 }
 
 function openEdit(enrollmentId, rideNo, currentVal) {
@@ -1310,15 +1532,14 @@ function openEdit(enrollmentId, rideNo, currentVal) {
   state.editRideNo = rideNo;
   state.editValue = currentVal ?? "";
 
-  const existing = state.assignByEnroll[enrollmentId]?.[rideNo];
+  const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
+  const parsed = parseCoachRecommendation(assignment?.custom_description);
 
-const parsed = parseCoachRecommendation(existing?.custom_description);
+state.editTurnText = assignment?.turn_text ?? "";
+state.editIsVideo = !!assignment?.is_video;
+state.editIsBracketing = !!assignment?.is_bracketing;
 
-state.editTurnText = existing?.turn_text ?? "";
-state.editIsVideo = !!existing?.is_video;
-state.editIsBracketing = !!existing?.is_bracketing;
-
-state.editCustomDescription = parsed.consultantDescription;
+state.editCustomDescription = parsed.consultantDescription || "";
 state.editCoachRecommendation = parsed.recommendation;
 state.editRecommendationPending = !!parsed.recommendationPending;
 state.editRecommendationConfidence = parsed.recommendationConfidence || "";
@@ -1327,8 +1548,14 @@ state.editCoachAudioPending = !!parsed.coachAudioPending;
 state.editCoachAudioActioned = !!parsed.coachAudioActioned;
 state.editCoachVideoPending = !!parsed.coachVideoPending;
 state.editCoachVideoActioned = !!parsed.coachVideoActioned;
+state.editCoachConsultantReviewedFor = parsed.coachConsultantReviewedFor || "";
+state.editConsultantVideoActionedFor = parsed.consultantVideoActionedFor || "";
 state.editCoachAudioPlayed = false;
 state.editConsultantAudioUrl = parsed.consultantAudioUrl || "";
+state.editHiddenMetadataLines = parsed.hiddenMetadataLines || [];
+state.isRecording = false;
+clearRecordedAudioState();
+state.mediaRecorder = null;
 
 state.drillSearch = "";
 
@@ -1356,8 +1583,17 @@ function closeEdit() {
   state.editCoachAudioActioned = false;
   state.editCoachVideoPending = false;
   state.editCoachVideoActioned = false;
+  state.editCoachConsultantReviewedFor = "";
+  state.editConsultantVideoActionedFor = "";
   state.editCoachAudioPlayed = false;
   state.editConsultantAudioUrl = "";
+  state.editHiddenMetadataLines = [];
+  state.isRecording = false;
+  if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
+    state.mediaRecorder.stop();
+  }
+  state.mediaRecorder = null;
+  clearRecordedAudioState();
 
   const player = document.getElementById("coachAudioPlayer");
   if (player) {
@@ -1394,7 +1630,10 @@ const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
     coachAudioActioned: state.editCoachAudioActioned,
     coachVideoPending: state.editCoachVideoPending,
     coachVideoActioned: state.editCoachVideoActioned,
+    coachConsultantReviewedFor: state.editCoachConsultantReviewedFor,
+    consultantVideoActionedFor: state.editConsultantVideoActionedFor,
     consultantAudioUrl: state.editConsultantAudioUrl,
+    hiddenMetadataLines: state.editHiddenMetadataLines,
   }
 );
 
@@ -1490,6 +1729,9 @@ async function handleSaveEdit() {
     }
     if (state.editCoachVideoPending && state.editCoachVideoActioned) {
       state.editCoachVideoPending = false;
+      if (state.editCoachConsultantReviewedFor) {
+        state.editConsultantVideoActionedFor = state.editCoachConsultantReviewedFor;
+      }
     }
 
     await upsertAssignment(
@@ -1666,6 +1908,53 @@ function wireEvents() {
     });
   }
 
+  const consultantRecordBtn = document.getElementById("consultantRecordBtn");
+  if (consultantRecordBtn) {
+    consultantRecordBtn.addEventListener("click", async () => {
+      try {
+        await startConsultantRecording();
+      } catch (err) {
+        state.isRecording = false;
+        state.mediaRecorder = null;
+        syncConsultantRecordingUI();
+        window.alert(`Microphone access failed: ${String(err?.message ?? err ?? "Unknown")}`);
+      }
+    });
+  }
+
+  const consultantStopBtn = document.getElementById("consultantStopBtn");
+  if (consultantStopBtn) {
+    consultantStopBtn.addEventListener("click", () => {
+      stopConsultantRecording();
+    });
+  }
+
+  const consultantPlayBtn = document.getElementById("consultantPlayBtn");
+  if (consultantPlayBtn) {
+    consultantPlayBtn.addEventListener("click", async () => {
+      const previewPlayer = document.getElementById("consultantAudioPreviewPlayer");
+      if (!previewPlayer || !state.recordedAudioUrl) return;
+      try {
+        await previewPlayer.play();
+      } catch (err) {
+        window.alert(`Playback failed: ${String(err?.message ?? err ?? "Unknown")}`);
+      }
+    });
+  }
+
+  const consultantUploadBtn = document.getElementById("consultantUploadBtn");
+  if (consultantUploadBtn) {
+    consultantUploadBtn.addEventListener("click", async () => {
+      try {
+        await uploadRecordedConsultantAudio();
+      } catch (err) {
+        window.alert(
+          `Consultant audio upload failed: ${String(err?.message ?? err ?? "Unknown")}`
+        );
+      }
+    });
+  }
+
   els.drillSearch.addEventListener("input", (e) => {
     state.drillSearch = e.target.value;
     renderDrillList();
@@ -1699,6 +1988,7 @@ function wireEvents() {
 
 async function init() {
   wireEvents();
+  syncConsultantRecordingUI();
 
   try {
     await loadEvents();
