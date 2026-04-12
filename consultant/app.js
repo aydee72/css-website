@@ -37,6 +37,10 @@ const state = {
   editCoachVideoActioned: false,
   editCoachAudioPlayed: false,
   editConsultantAudioUrl: "",
+  isRecording: false,
+  recordedBlob: null,
+  recordedAudioUrl: "",
+  mediaRecorder: null,
   editHiddenMetadataLines: [],
   drillSearch: "",
   realtimeChannel: null,
@@ -1366,6 +1370,115 @@ async function uploadConsultantAudio(file) {
   await renderConsultantAudio();
 }
 
+function syncConsultantRecordingUI() {
+  const recordBtn = document.getElementById("consultantRecordBtn");
+  const stopBtn = document.getElementById("consultantStopBtn");
+  const playBtn = document.getElementById("consultantPlayBtn");
+  const uploadBtn = document.getElementById("consultantUploadBtn");
+  const previewBox = document.getElementById("consultantAudioPreviewBox");
+  const previewPlayer = document.getElementById("consultantAudioPreviewPlayer");
+
+  if (!recordBtn || !stopBtn || !playBtn || !uploadBtn || !previewBox || !previewPlayer) return;
+
+  recordBtn.disabled = state.isRecording;
+  stopBtn.disabled = !state.isRecording;
+
+  const hasRecording = !!state.recordedBlob && !!state.recordedAudioUrl;
+  playBtn.disabled = !hasRecording;
+  uploadBtn.disabled = !hasRecording || !state.editEnrollmentId;
+  previewBox.classList.toggle("hidden", !hasRecording);
+}
+
+function clearRecordedAudioState() {
+  const previewPlayer = document.getElementById("consultantAudioPreviewPlayer");
+
+  if (previewPlayer) {
+    previewPlayer.pause();
+    previewPlayer.removeAttribute("src");
+    previewPlayer.load();
+  }
+
+  if (state.recordedAudioUrl) {
+    URL.revokeObjectURL(state.recordedAudioUrl);
+  }
+
+  state.recordedBlob = null;
+  state.recordedAudioUrl = "";
+}
+
+async function startConsultantRecording() {
+  if (state.isRecording) return;
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const recordedChunks = [];
+
+  const recorder = new MediaRecorder(stream);
+  state.mediaRecorder = recorder;
+  state.isRecording = true;
+  clearRecordedAudioState();
+  syncConsultantRecordingUI();
+
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data && event.data.size > 0) {
+      recordedChunks.push(event.data);
+    }
+  });
+
+  recorder.addEventListener("stop", () => {
+    stream.getTracks().forEach((track) => track.stop());
+
+    if (!state.editOpen) {
+      state.mediaRecorder = null;
+      state.isRecording = false;
+      syncConsultantRecordingUI();
+      return;
+    }
+
+    const type = recorder.mimeType || "audio/webm";
+    const blob = new Blob(recordedChunks, { type });
+    state.recordedBlob = blob;
+    state.recordedAudioUrl = URL.createObjectURL(blob);
+
+    const previewPlayer = document.getElementById("consultantAudioPreviewPlayer");
+    if (previewPlayer) {
+      previewPlayer.pause();
+      previewPlayer.src = state.recordedAudioUrl;
+      previewPlayer.load();
+    }
+
+    state.mediaRecorder = null;
+    state.isRecording = false;
+    syncConsultantRecordingUI();
+  });
+
+  recorder.addEventListener("error", () => {
+    stream.getTracks().forEach((track) => track.stop());
+    state.mediaRecorder = null;
+    state.isRecording = false;
+    syncConsultantRecordingUI();
+  });
+
+  recorder.start();
+}
+
+function stopConsultantRecording() {
+  if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
+    state.mediaRecorder.stop();
+  }
+}
+
+async function uploadRecordedConsultantAudio() {
+  if (!state.recordedBlob || !state.editEnrollmentId) return;
+
+  const mimeType = state.recordedBlob.type || "audio/webm";
+  const ext = mimeType.includes("mp4") ? "m4a" : "webm";
+  const file = new File([state.recordedBlob], `consultant-recording-${Date.now()}.${ext}`, {
+    type: mimeType,
+  });
+
+  await uploadConsultantAudio(file);
+}
+
 function syncEditFields() {
   els.editValue.value = state.editValue;
   els.editTurnText.value = state.editTurnText;
@@ -1376,6 +1489,7 @@ function syncEditFields() {
   renderCoachRecommendation();
   renderCoachAudio();
   renderConsultantAudio();
+  syncConsultantRecordingUI();
 }
 
 function openEdit(enrollmentId, rideNo, currentVal) {
@@ -1403,6 +1517,9 @@ state.editCoachVideoActioned = !!parsed.coachVideoActioned;
 state.editCoachAudioPlayed = false;
 state.editConsultantAudioUrl = parsed.consultantAudioUrl || "";
 state.editHiddenMetadataLines = parsed.hiddenMetadataLines || [];
+state.isRecording = false;
+clearRecordedAudioState();
+state.mediaRecorder = null;
 
 state.drillSearch = "";
 
@@ -1433,6 +1550,12 @@ function closeEdit() {
   state.editCoachAudioPlayed = false;
   state.editConsultantAudioUrl = "";
   state.editHiddenMetadataLines = [];
+  state.isRecording = false;
+  if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
+    state.mediaRecorder.stop();
+  }
+  state.mediaRecorder = null;
+  clearRecordedAudioState();
 
   const player = document.getElementById("coachAudioPlayer");
   if (player) {
@@ -1742,6 +1865,53 @@ function wireEvents() {
     });
   }
 
+  const consultantRecordBtn = document.getElementById("consultantRecordBtn");
+  if (consultantRecordBtn) {
+    consultantRecordBtn.addEventListener("click", async () => {
+      try {
+        await startConsultantRecording();
+      } catch (err) {
+        state.isRecording = false;
+        state.mediaRecorder = null;
+        syncConsultantRecordingUI();
+        window.alert(`Microphone access failed: ${String(err?.message ?? err ?? "Unknown")}`);
+      }
+    });
+  }
+
+  const consultantStopBtn = document.getElementById("consultantStopBtn");
+  if (consultantStopBtn) {
+    consultantStopBtn.addEventListener("click", () => {
+      stopConsultantRecording();
+    });
+  }
+
+  const consultantPlayBtn = document.getElementById("consultantPlayBtn");
+  if (consultantPlayBtn) {
+    consultantPlayBtn.addEventListener("click", async () => {
+      const previewPlayer = document.getElementById("consultantAudioPreviewPlayer");
+      if (!previewPlayer || !state.recordedAudioUrl) return;
+      try {
+        await previewPlayer.play();
+      } catch (err) {
+        window.alert(`Playback failed: ${String(err?.message ?? err ?? "Unknown")}`);
+      }
+    });
+  }
+
+  const consultantUploadBtn = document.getElementById("consultantUploadBtn");
+  if (consultantUploadBtn) {
+    consultantUploadBtn.addEventListener("click", async () => {
+      try {
+        await uploadRecordedConsultantAudio();
+      } catch (err) {
+        window.alert(
+          `Consultant audio upload failed: ${String(err?.message ?? err ?? "Unknown")}`
+        );
+      }
+    });
+  }
+
   els.drillSearch.addEventListener("input", (e) => {
     state.drillSearch = e.target.value;
     renderDrillList();
@@ -1775,6 +1945,7 @@ function wireEvents() {
 
 async function init() {
   wireEvents();
+  syncConsultantRecordingUI();
 
   try {
     await loadEvents();
