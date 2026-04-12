@@ -233,8 +233,7 @@ function parseCoachRecommendation(customDescription) {
     l.startsWith(COACH_RECOMMENDATION_PREFIX)
   );
 
-  const hiddenPrefixes = [
-    COACH_RECOMMENDATION_PREFIX,
+  const legacyPrefixes = [
     COACH_RECOMMENDATION_PENDING_PREFIX,
     COACH_RECOMMENDATION_CONFIDENCE_PREFIX,
     COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX,
@@ -242,13 +241,19 @@ function parseCoachRecommendation(customDescription) {
     COACH_AUDIO_ACTIONED_PREFIX,
     COACH_VIDEO_PENDING_PREFIX,
     COACH_VIDEO_ACTIONED_PREFIX,
+  ];
+
+  const hiddenPrefixes = [
+    COACH_RECOMMENDATION_PREFIX,
+    ...legacyPrefixes,
     CONSULTANT_AUDIO_URL_PREFIX,
   ];
 
-  const consultantDescription = lines
-    .filter((l) => !hiddenPrefixes.some((p) => l.startsWith(p)))
-    .join("\n")
-    .trim();
+  const cleanedLines = lines.filter(
+    (l) => !hiddenPrefixes.some((p) => l.startsWith(p))
+  );
+
+  const consultantDescription = cleanedLines.join("\n").trim();
 
   const recommendationPending = parseBoolText(
     metadataLineValue(lines, COACH_RECOMMENDATION_PENDING_PREFIX)
