@@ -473,6 +473,12 @@ function buildCustomDescriptionWithCoachRecommendation(
       `${CONSULTANT_AUDIO_URL_PREFIX} ${cleanText(metadata.consultantAudioUrl)}`
     );
   }
+  const reviewedForRaw = cleanText(metadata.consultantReviewedFor);
+  if (reviewedForRaw) {
+    metadataLines.push(
+      `${COACH_CONSULTANT_REVIEWED_FOR_PREFIX} ${reviewedForRaw}`
+    );
+  }
 
   const out = [cleanConsultant, coachLine, ...metadataLines]
     .filter(Boolean)
@@ -1420,6 +1426,13 @@ async function upsertAssignment(
 
   const existing = state.assignByEnroll[enrollmentId]?.[rideNo] ?? null;
 const parsedExisting = parseCoachRecommendation(existing?.custom_description);
+  const reviewedForRides = new Set(parsedExisting.consultantReviewedForRides ?? []);
+  if (parsedExisting.recommendation && rideNo > 0) {
+    reviewedForRides.add(rideNo);
+  }
+  const consultantReviewedFor = Array.from(reviewedForRides)
+    .sort((a, b) => a - b)
+    .join(",");
 
 const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
   norm(customDescription) || null,
@@ -1433,6 +1446,7 @@ const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
     coachVideoPending: state.editCoachVideoPending,
     coachVideoActioned: state.editCoachVideoActioned,
     consultantAudioUrl: state.editConsultantAudioUrl,
+    consultantReviewedFor,
   }
 );
 
