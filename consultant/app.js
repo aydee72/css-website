@@ -414,6 +414,43 @@ function buildCustomDescriptionWithCoachRecommendation(
     : "";
 
   const metadataLines = [];
+  if (metadata.recommendationPending !== undefined) {
+    metadataLines.push(
+      `${COACH_RECOMMENDATION_PENDING_PREFIX} ${metadata.recommendationPending ? "true" : "false"}`
+    );
+  }
+  if (cleanText(metadata.recommendationConfidence)) {
+    metadataLines.push(
+      `${COACH_RECOMMENDATION_CONFIDENCE_PREFIX} ${cleanText(metadata.recommendationConfidence)}`
+    );
+  }
+  if (cleanText(metadata.recommendationConfidenceDetail)) {
+    metadataLines.push(
+      `${COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX} ${cleanText(
+        metadata.recommendationConfidenceDetail
+      )}`
+    );
+  }
+  if (metadata.coachAudioPending !== undefined) {
+    metadataLines.push(
+      `${COACH_AUDIO_PENDING_PREFIX} ${metadata.coachAudioPending ? "true" : "false"}`
+    );
+  }
+  if (metadata.coachAudioActioned !== undefined) {
+    metadataLines.push(
+      `${COACH_AUDIO_ACTIONED_PREFIX} ${metadata.coachAudioActioned ? "true" : "false"}`
+    );
+  }
+  if (metadata.coachVideoPending !== undefined) {
+    metadataLines.push(
+      `${COACH_VIDEO_PENDING_PREFIX} ${metadata.coachVideoPending ? "true" : "false"}`
+    );
+  }
+  if (metadata.coachVideoActioned !== undefined) {
+    metadataLines.push(
+      `${COACH_VIDEO_ACTIONED_PREFIX} ${metadata.coachVideoActioned ? "true" : "false"}`
+    );
+  }
   if (cleanText(metadata.consultantAudioUrl)) {
     metadataLines.push(
       `${CONSULTANT_AUDIO_URL_PREFIX} ${cleanText(metadata.consultantAudioUrl)}`
