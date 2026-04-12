@@ -1532,15 +1532,14 @@ function openEdit(enrollmentId, rideNo, currentVal) {
   state.editRideNo = rideNo;
   state.editValue = currentVal ?? "";
 
-  const existing = state.assignByEnroll[enrollmentId]?.[rideNo];
+  const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
+  const parsed = parseCoachRecommendation(assignment?.custom_description);
 
-const parsed = parseCoachRecommendation(existing?.custom_description);
+state.editTurnText = assignment?.turn_text ?? "";
+state.editIsVideo = !!assignment?.is_video;
+state.editIsBracketing = !!assignment?.is_bracketing;
 
-state.editTurnText = existing?.turn_text ?? "";
-state.editIsVideo = !!existing?.is_video;
-state.editIsBracketing = !!existing?.is_bracketing;
-
-state.editCustomDescription = parsed.consultantDescription;
+state.editCustomDescription = parsed.consultantDescription || "";
 state.editCoachRecommendation = parsed.recommendation;
 state.editRecommendationPending = !!parsed.recommendationPending;
 state.editRecommendationConfidence = parsed.recommendationConfidence || "";
