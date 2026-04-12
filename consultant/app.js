@@ -375,7 +375,8 @@ function parseCoachRecommendation(customDescription) {
         recommendationConfidenceDetail || jsonConfidenceDetail,
       coachAudioPending,
       coachAudioActioned,
-      coachVideoPending,
+      coachVideoPending:
+        coachVideoPending || (!!recommendation.isVideo && !coachVideoActioned),
       coachVideoActioned,
       consultantAudioUrl,
     };
@@ -1205,8 +1206,11 @@ async function renderCoachAudio() {
   const rideNo = state.editRideNo;
   const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
   const audioUrl = assignment?.coach_audio_url || "";
-  const hasVideoPending = !!state.editCoachVideoPending;
+  const hasVideoPending =
+    !!state.editCoachVideoPending || !!state.editCoachVideoActioned;
   videoCheck.checked = !!state.editCoachVideoActioned;
+  const videoText = videoRow.querySelector("span");
+  if (videoText) videoText.textContent = "Camera actioned";
   videoRow.classList.toggle("hidden", !hasVideoPending);
 
   if (!audioUrl) {
