@@ -205,6 +205,7 @@ function emptyRecommendation() {
     isVideo: false,
     isBracketing: false,
     note: "",
+    confidence: "",
   };
 }
 
@@ -335,6 +336,10 @@ function parseCoachRecommendation(customDescription) {
       isVideo: !!parsed?.isVideo,
       isBracketing: !!parsed?.isBracketing,
       note: cleanText(parsed?.note),
+      confidence:
+        cleanText(parsed?.confidence) ||
+        cleanText(parsed?.confidenceBand) ||
+        cleanText(parsed?.confidencePct),
     };
 
     const jsonConfidence =
@@ -357,7 +362,8 @@ function parseCoachRecommendation(customDescription) {
       recommendation: hasAny ? recommendation : null,
       consultantDescription,
       recommendationPending,
-      recommendationConfidence: recommendationConfidence || jsonConfidence,
+      recommendationConfidence:
+        recommendationConfidence || recommendation.confidence || jsonConfidence,
       recommendationConfidenceDetail:
         recommendationConfidenceDetail || jsonConfidenceDetail,
       coachAudioPending,
@@ -407,37 +413,13 @@ function buildCustomDescriptionWithCoachRecommendation(
         isVideo: !!recommendation.isVideo,
         isBracketing: !!recommendation.isBracketing,
         note: cleanText(recommendation.note),
+        confidence:
+          cleanText(recommendation.confidence) ||
+          cleanText(metadata.recommendationConfidence),
       })}`
     : "";
 
   const metadataLines = [];
-  if (metadata.recommendationPending) {
-    metadataLines.push(`${COACH_RECOMMENDATION_PENDING_PREFIX} true`);
-  }
-  if (cleanText(metadata.recommendationConfidence)) {
-    metadataLines.push(
-      `${COACH_RECOMMENDATION_CONFIDENCE_PREFIX} ${cleanText(metadata.recommendationConfidence)}`
-    );
-  }
-  if (cleanText(metadata.recommendationConfidenceDetail)) {
-    metadataLines.push(
-      `${COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX} ${cleanText(
-        metadata.recommendationConfidenceDetail
-      )}`
-    );
-  }
-  if (metadata.coachAudioPending) {
-    metadataLines.push(`${COACH_AUDIO_PENDING_PREFIX} true`);
-  }
-  if (metadata.coachAudioActioned) {
-    metadataLines.push(`${COACH_AUDIO_ACTIONED_PREFIX} true`);
-  }
-  if (metadata.coachVideoPending) {
-    metadataLines.push(`${COACH_VIDEO_PENDING_PREFIX} true`);
-  }
-  if (metadata.coachVideoActioned) {
-    metadataLines.push(`${COACH_VIDEO_ACTIONED_PREFIX} true`);
-  }
   if (cleanText(metadata.consultantAudioUrl)) {
     metadataLines.push(
       `${CONSULTANT_AUDIO_URL_PREFIX} ${cleanText(metadata.consultantAudioUrl)}`
@@ -1321,7 +1303,8 @@ state.editIsBracketing = !!existing?.is_bracketing;
 state.editCustomDescription = parsed.consultantDescription;
 state.editCoachRecommendation = parsed.recommendation;
 state.editRecommendationPending = !!parsed.recommendationPending;
-state.editRecommendationConfidence = parsed.recommendationConfidence || "";
+state.editRecommendationConfidence =
+  parsed.recommendation?.confidence || parsed.recommendationConfidence || "";
 state.editRecommendationConfidenceDetail = parsed.recommendationConfidenceDetail || "";
 state.editCoachAudioPending = !!parsed.coachAudioPending;
 state.editCoachAudioActioned = !!parsed.coachAudioActioned;
