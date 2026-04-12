@@ -235,26 +235,10 @@ function parseCoachRecommendation(customDescription) {
     l.startsWith(COACH_RECOMMENDATION_PREFIX)
   );
 
-  const legacyPrefixes = [
-    COACH_RECOMMENDATION_PENDING_PREFIX,
-    COACH_RECOMMENDATION_CONFIDENCE_PREFIX,
-    COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX,
-    COACH_AUDIO_PENDING_PREFIX,
-    COACH_AUDIO_ACTIONED_PREFIX,
-    COACH_VIDEO_PENDING_PREFIX,
-    COACH_VIDEO_ACTIONED_PREFIX,
-    COACH_VIDEO_ACTIONED_FOR_PREFIX,
-  ];
-
-  const hiddenPrefixes = [
-    COACH_RECOMMENDATION_PREFIX,
-    ...legacyPrefixes,
-    COACH_CONSULTANT_REVIEWED_FOR_PREFIX,
-    CONSULTANT_AUDIO_URL_PREFIX,
-  ];
-
   const cleanedLines = lines.filter(
-    (l) => !hiddenPrefixes.some((p) => l.startsWith(p))
+    (l) =>
+      !l.startsWith("[COACH_") &&
+      !l.startsWith(CONSULTANT_AUDIO_URL_PREFIX)
   );
 
   const consultantDescription = cleanedLines.join("\n").trim();
