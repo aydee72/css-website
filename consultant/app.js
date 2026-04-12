@@ -798,7 +798,7 @@ function hasRideRecommendationPending(enrollmentId, rideNo) {
   const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
   if (!assignment) return false;
   const parsed = parseCoachRecommendation(assignment?.custom_description);
-  return !!parsed.recommendationPending;
+  return !!parsed.recommendation && (!!parsed.recommendationPending || !parsed.consultantDescription);
 }
 
 function hasRideAudio(enrollmentId, rideNo) {
