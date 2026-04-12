@@ -479,6 +479,12 @@ function buildCustomDescriptionWithCoachRecommendation(
       `${COACH_CONSULTANT_REVIEWED_FOR_PREFIX} ${reviewedForRaw}`
     );
   }
+  if (metadata.coachVideoPending) {
+    metadataLines.push(`${COACH_VIDEO_PENDING_PREFIX} true`);
+  }
+  if (metadata.coachVideoActioned) {
+    metadataLines.push(`${COACH_VIDEO_ACTIONED_PREFIX} true`);
+  }
 
   const out = [cleanConsultant, coachLine, ...metadataLines]
     .filter(Boolean)
