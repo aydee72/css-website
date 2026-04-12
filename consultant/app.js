@@ -225,6 +225,42 @@ function metadataLineValue(lines, prefix) {
   return line ? line.slice(prefix.length).trim() : "";
 }
 
+function parseReviewedRideNumbers(value) {
+  const raw = String(value ?? "").trim();
+  const rides = new Set();
+
+  if (!raw) return rides;
+
+  const addNumericToken = (token) => {
+    const n = Number(String(token ?? "").trim());
+    if (Number.isFinite(n) && n > 0) {
+      rides.add(n);
+    }
+  };
+
+  if (raw.startsWith("{") || raw.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) addNumericToken(item);
+      } else if (parsed && typeof parsed === "object") {
+        for (const [k, v] of Object.entries(parsed)) {
+          if (parseBoolText(v)) addNumericToken(k);
+        }
+      }
+    } catch {
+      // noop (fallback parsing below)
+    }
+  }
+
+  if (!rides.size) {
+    const tokens = raw.split(/[,\s;|]+/).filter(Boolean);
+    for (const token of tokens) addNumericToken(token);
+  }
+
+  return rides;
+}
+
 function parseCoachRecommendation(customDescription) {
   const lines = String(customDescription ?? "")
     .split("\n")
@@ -267,6 +303,14 @@ function parseCoachRecommendation(customDescription) {
   const consultantAudioUrl = cleanText(
     metadataLineValue(lines, CONSULTANT_AUDIO_URL_PREFIX)
   );
+  const consultantReviewedForRaw = cleanText(
+    metadataLineValue(lines, COACH_CONSULTANT_REVIEWED_FOR_PREFIX)
+  );
+  const consultantReviewedForRides = parseReviewedRideNumbers(
+    consultantReviewedForRaw
+  );
+  const consultantReviewedAny =
+    parseBoolText(consultantReviewedForRaw) || consultantReviewedForRides.size > 0;
 
   if (!coachLine) {
     return {
@@ -280,6 +324,8 @@ function parseCoachRecommendation(customDescription) {
       coachVideoPending,
       coachVideoActioned,
       consultantAudioUrl,
+      consultantReviewedAny,
+      consultantReviewedForRides,
     };
   }
 
@@ -299,6 +345,8 @@ function parseCoachRecommendation(customDescription) {
       coachVideoPending,
       coachVideoActioned,
       consultantAudioUrl,
+      consultantReviewedAny,
+      consultantReviewedForRides,
     };
   }
 
@@ -317,6 +365,8 @@ function parseCoachRecommendation(customDescription) {
       coachVideoPending,
       coachVideoActioned,
       consultantAudioUrl,
+      consultantReviewedAny,
+      consultantReviewedForRides,
     };
   }
 
@@ -365,6 +415,8 @@ function parseCoachRecommendation(customDescription) {
         coachVideoPending || (!!recommendation.isVideo && !coachVideoActioned),
       coachVideoActioned,
       consultantAudioUrl,
+      consultantReviewedAny,
+      consultantReviewedForRides,
     };
   } catch {
     const note = cleanText(payload);
@@ -381,6 +433,8 @@ function parseCoachRecommendation(customDescription) {
       coachVideoPending,
       coachVideoActioned,
       consultantAudioUrl,
+      consultantReviewedAny,
+      consultantReviewedForRides,
     };
   }
 }
@@ -798,7 +852,9 @@ function hasRideRecommendationPending(enrollmentId, rideNo) {
   const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
   if (!assignment) return false;
   const parsed = parseCoachRecommendation(assignment?.custom_description);
-  return !!parsed.recommendation && (!!parsed.recommendationPending || !parsed.consultantDescription);
+  const reviewedForRide = parsed.consultantReviewedForRides?.has(rideNo);
+  const reviewed = !!reviewedForRide || !!parsed.consultantReviewedAny;
+  return !!parsed.recommendation && !!parsed.recommendationPending && !reviewed;
 }
 
 function hasRideAudio(enrollmentId, rideNo) {
