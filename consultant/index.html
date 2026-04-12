@@ -85,11 +85,29 @@
         <div id="coachRecommendationBox" class="coach-rec-box hidden">
           <div class="coach-rec-title">Coach recommendation</div>
           <div id="coachRecommendationContent"></div>
+          <div id="coachRecommendationConfidence" class="coach-rec-confidence hidden"></div>
+          <div id="coachRecommendationConfidenceDetail" class="coach-rec-confidence-detail hidden"></div>
         </div>
 
         <div id="coachAudioBox" class="coach-audio-box hidden">
           <div class="coach-audio-title">Coach audio</div>
           <audio id="coachAudioPlayer" controls preload="none"></audio>
+          <label class="inline-check hidden" id="coachVideoReviewedRow">
+            <input id="coachVideoReviewed" type="checkbox" />
+            <span>Coach video reviewed</span>
+          </label>
+        </div>
+
+        <div id="consultantAudioBox" class="coach-audio-box hidden">
+          <div class="coach-audio-title">Consultant audio for coach</div>
+          <audio id="consultantAudioPlayer" controls preload="none"></audio>
+        </div>
+
+        <div class="consultant-audio-actions">
+          <label class="file-btn">
+            Upload consultant audio
+            <input id="consultantAudioUpload" type="file" accept="audio/*" hidden />
+          </label>
         </div>
 
         <label class="field">

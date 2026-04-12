@@ -28,6 +28,15 @@ const state = {
   editIsBracketing: false,
   editCustomDescription: "",
   editCoachRecommendation: null,
+  editRecommendationPending: false,
+  editRecommendationConfidence: "",
+  editRecommendationConfidenceDetail: "",
+  editCoachAudioPending: false,
+  editCoachAudioActioned: false,
+  editCoachVideoPending: false,
+  editCoachVideoActioned: false,
+  editCoachAudioPlayed: false,
+  editConsultantAudioUrl: "",
   drillSearch: "",
   realtimeChannel: null,
 };
@@ -176,6 +185,14 @@ function escapeHtml(str) {
 /* ===== Coach Recommendation Support ===== */
 
 const COACH_RECOMMENDATION_PREFIX = "[COACH_RECOMMENDATION]";
+const COACH_RECOMMENDATION_PENDING_PREFIX = "[COACH_RECOMMENDATION_PENDING]";
+const COACH_RECOMMENDATION_CONFIDENCE_PREFIX = "[COACH_RECOMMENDATION_CONFIDENCE]";
+const COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX = "[COACH_RECOMMENDATION_CONFIDENCE_DETAIL]";
+const COACH_AUDIO_PENDING_PREFIX = "[COACH_AUDIO_PENDING]";
+const COACH_AUDIO_ACTIONED_PREFIX = "[COACH_AUDIO_ACTIONED]";
+const COACH_VIDEO_PENDING_PREFIX = "[COACH_VIDEO_PENDING]";
+const COACH_VIDEO_ACTIONED_PREFIX = "[COACH_VIDEO_ACTIONED]";
+const CONSULTANT_AUDIO_URL_PREFIX = "[CONSULTANT_AUDIO_URL]";
 
 function cleanText(input) {
   return String(input ?? "").replace(/\r\n/g, "\n").trim();
@@ -191,6 +208,20 @@ function emptyRecommendation() {
   };
 }
 
+function parseBoolText(value) {
+  const v = String(value ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+function findMetadataLine(lines, prefix) {
+  return lines.find((l) => l.startsWith(prefix)) || "";
+}
+
+function metadataLineValue(lines, prefix) {
+  const line = findMetadataLine(lines, prefix);
+  return line ? line.slice(prefix.length).trim() : "";
+}
+
 function parseCoachRecommendation(customDescription) {
   const lines = String(customDescription ?? "")
     .split("\n")
@@ -201,13 +232,61 @@ function parseCoachRecommendation(customDescription) {
     l.startsWith(COACH_RECOMMENDATION_PREFIX)
   );
 
+  const hiddenPrefixes = [
+    COACH_RECOMMENDATION_PREFIX,
+    COACH_RECOMMENDATION_PENDING_PREFIX,
+    COACH_RECOMMENDATION_CONFIDENCE_PREFIX,
+    COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX,
+    COACH_AUDIO_PENDING_PREFIX,
+    COACH_AUDIO_ACTIONED_PREFIX,
+    COACH_VIDEO_PENDING_PREFIX,
+    COACH_VIDEO_ACTIONED_PREFIX,
+    CONSULTANT_AUDIO_URL_PREFIX,
+  ];
+
   const consultantDescription = lines
-    .filter((l) => !l.startsWith(COACH_RECOMMENDATION_PREFIX))
+    .filter((l) => !hiddenPrefixes.some((p) => l.startsWith(p)))
     .join("\n")
     .trim();
 
+  const recommendationPending = parseBoolText(
+    metadataLineValue(lines, COACH_RECOMMENDATION_PENDING_PREFIX)
+  );
+  const recommendationConfidence = cleanText(
+    metadataLineValue(lines, COACH_RECOMMENDATION_CONFIDENCE_PREFIX)
+  );
+  const recommendationConfidenceDetail = cleanText(
+    metadataLineValue(lines, COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX)
+  );
+  const coachAudioPending = parseBoolText(
+    metadataLineValue(lines, COACH_AUDIO_PENDING_PREFIX)
+  );
+  const coachAudioActioned = parseBoolText(
+    metadataLineValue(lines, COACH_AUDIO_ACTIONED_PREFIX)
+  );
+  const coachVideoPending = parseBoolText(
+    metadataLineValue(lines, COACH_VIDEO_PENDING_PREFIX)
+  );
+  const coachVideoActioned = parseBoolText(
+    metadataLineValue(lines, COACH_VIDEO_ACTIONED_PREFIX)
+  );
+  const consultantAudioUrl = cleanText(
+    metadataLineValue(lines, CONSULTANT_AUDIO_URL_PREFIX)
+  );
+
   if (!coachLine) {
-    return { recommendation: null, consultantDescription };
+    return {
+      recommendation: null,
+      consultantDescription,
+      recommendationPending,
+      recommendationConfidence,
+      recommendationConfidenceDetail,
+      coachAudioPending,
+      coachAudioActioned,
+      coachVideoPending,
+      coachVideoActioned,
+      consultantAudioUrl,
+    };
   }
 
   const payload = coachLine
@@ -215,7 +294,18 @@ function parseCoachRecommendation(customDescription) {
     .trim();
 
   if (!payload) {
-    return { recommendation: null, consultantDescription };
+    return {
+      recommendation: null,
+      consultantDescription,
+      recommendationPending,
+      recommendationConfidence,
+      recommendationConfidenceDetail,
+      coachAudioPending,
+      coachAudioActioned,
+      coachVideoPending,
+      coachVideoActioned,
+      consultantAudioUrl,
+    };
   }
 
   if (!payload.startsWith("{")) {
@@ -225,6 +315,14 @@ function parseCoachRecommendation(customDescription) {
         ? { ...emptyRecommendation(), note }
         : null,
       consultantDescription,
+      recommendationPending,
+      recommendationConfidence,
+      recommendationConfidenceDetail,
+      coachAudioPending,
+      coachAudioActioned,
+      coachVideoPending,
+      coachVideoActioned,
+      consultantAudioUrl,
     };
   }
 
@@ -239,6 +337,15 @@ function parseCoachRecommendation(customDescription) {
       note: cleanText(parsed?.note),
     };
 
+    const jsonConfidence =
+      cleanText(parsed?.confidenceBand) ||
+      cleanText(parsed?.confidence) ||
+      cleanText(parsed?.confidencePct);
+    const jsonConfidenceDetail =
+      cleanText(parsed?.confidenceDetail) ||
+      cleanText(parsed?.confidenceExplanation) ||
+      cleanText(parsed?.confidenceReason);
+
     const hasAny =
       recommendation.drill ||
       recommendation.turnText ||
@@ -249,6 +356,15 @@ function parseCoachRecommendation(customDescription) {
     return {
       recommendation: hasAny ? recommendation : null,
       consultantDescription,
+      recommendationPending,
+      recommendationConfidence: recommendationConfidence || jsonConfidence,
+      recommendationConfidenceDetail:
+        recommendationConfidenceDetail || jsonConfidenceDetail,
+      coachAudioPending,
+      coachAudioActioned,
+      coachVideoPending,
+      coachVideoActioned,
+      consultantAudioUrl,
     };
   } catch {
     const note = cleanText(payload);
@@ -257,13 +373,22 @@ function parseCoachRecommendation(customDescription) {
         ? { ...emptyRecommendation(), note }
         : null,
       consultantDescription,
+      recommendationPending,
+      recommendationConfidence,
+      recommendationConfidenceDetail,
+      coachAudioPending,
+      coachAudioActioned,
+      coachVideoPending,
+      coachVideoActioned,
+      consultantAudioUrl,
     };
   }
 }
 
 function buildCustomDescriptionWithCoachRecommendation(
   consultantDescription,
-  recommendation
+  recommendation,
+  metadata = {}
 ) {
   const cleanConsultant = cleanText(consultantDescription);
 
@@ -285,7 +410,41 @@ function buildCustomDescriptionWithCoachRecommendation(
       })}`
     : "";
 
-  const out = [cleanConsultant, coachLine]
+  const metadataLines = [];
+  if (metadata.recommendationPending) {
+    metadataLines.push(`${COACH_RECOMMENDATION_PENDING_PREFIX} true`);
+  }
+  if (cleanText(metadata.recommendationConfidence)) {
+    metadataLines.push(
+      `${COACH_RECOMMENDATION_CONFIDENCE_PREFIX} ${cleanText(metadata.recommendationConfidence)}`
+    );
+  }
+  if (cleanText(metadata.recommendationConfidenceDetail)) {
+    metadataLines.push(
+      `${COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX} ${cleanText(
+        metadata.recommendationConfidenceDetail
+      )}`
+    );
+  }
+  if (metadata.coachAudioPending) {
+    metadataLines.push(`${COACH_AUDIO_PENDING_PREFIX} true`);
+  }
+  if (metadata.coachAudioActioned) {
+    metadataLines.push(`${COACH_AUDIO_ACTIONED_PREFIX} true`);
+  }
+  if (metadata.coachVideoPending) {
+    metadataLines.push(`${COACH_VIDEO_PENDING_PREFIX} true`);
+  }
+  if (metadata.coachVideoActioned) {
+    metadataLines.push(`${COACH_VIDEO_ACTIONED_PREFIX} true`);
+  }
+  if (cleanText(metadata.consultantAudioUrl)) {
+    metadataLines.push(
+      `${CONSULTANT_AUDIO_URL_PREFIX} ${cleanText(metadata.consultantAudioUrl)}`
+    );
+  }
+
+  const out = [cleanConsultant, coachLine, ...metadataLines]
     .filter(Boolean)
     .join("\n")
     .trim();
@@ -659,9 +818,25 @@ function hasRideRecommendation(enrollmentId, rideNo) {
   return !!parsed.recommendation;
 }
 
+function hasRideRecommendationPending(enrollmentId, rideNo) {
+  const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
+  if (!assignment) return false;
+  const parsed = parseCoachRecommendation(assignment?.custom_description);
+  return !!parsed.recommendationPending;
+}
+
 function hasRideAudio(enrollmentId, rideNo) {
   const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
-  return !!assignment?.coach_audio_url;
+  if (!assignment) return false;
+  const parsed = parseCoachRecommendation(assignment?.custom_description);
+  return !!assignment?.coach_audio_url || !!parsed.coachAudioPending;
+}
+
+function hasRideVideoPending(enrollmentId, rideNo) {
+  const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
+  if (!assignment) return false;
+  const parsed = parseCoachRecommendation(assignment?.custom_description);
+  return !!parsed.coachVideoPending;
 }
 
 async function resolveCoachAudioPlaybackUrl(storedValue) {
@@ -672,6 +847,19 @@ async function resolveCoachAudioPlaybackUrl(storedValue) {
   const { data, error } = await supabaseClient.storage
     .from("coach-audio")
     .createSignedUrl(value, 60 * 60 * 8) // 8 hours
+
+  if (error) throw error;
+  return data?.signedUrl ?? "";
+}
+
+async function resolveConsultantAudioPlaybackUrl(storedValue) {
+  const value = String(storedValue ?? "").trim();
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return value;
+
+  const { data, error } = await supabaseClient.storage
+    .from("consultant-audio")
+    .createSignedUrl(value, 60 * 60 * 8);
 
   if (error) throw error;
   return data?.signedUrl ?? "";
@@ -702,18 +890,21 @@ function renderBoard() {
 const isEmpty = !norm(val);
 
 const hasRecommendation = hasRideRecommendation(r.id, rideNo);
+const hasRecommendationPending = hasRideRecommendationPending(r.id, rideNo);
 const hasAudio = hasRideAudio(r.id, rideNo);
+const hasVideoPending = hasRideVideoPending(r.id, rideNo);
 
 const displayText = val || (hasRecommendation ? "REC" : "—");
 
 const icons = `
   ${hasRecommendation ? `<span class="cell-icon rec">⭐</span>` : ""}
   ${hasAudio ? `<span class="cell-icon audio">🔊</span>` : ""}
+  ${hasVideoPending ? `<span class="cell-icon video">📹</span>` : ""}
 `;
 
 return `
   <button
-    class="cell ${isEmpty ? "" : "cell-on"} ${hasRecommendation ? "cell-rec" : ""}"
+    class="cell ${isEmpty ? "" : "cell-on"} ${hasRecommendationPending ? "cell-rec" : ""}"
                   type="button"
                   data-enrollment-id="${escapeHtml(r.id)}"
                   data-ride-no="${rideNo}"
@@ -959,14 +1150,20 @@ function syncToggleButtons() {
 function renderCoachRecommendation() {
   const box = document.getElementById("coachRecommendationBox");
   const content = document.getElementById("coachRecommendationContent");
+  const confidence = document.getElementById("coachRecommendationConfidence");
+  const confidenceDetail = document.getElementById("coachRecommendationConfidenceDetail");
 
-  if (!box || !content) return;
+  if (!box || !content || !confidence || !confidenceDetail) return;
 
   const rec = state.editCoachRecommendation;
 
   if (!rec) {
     box.classList.add("hidden");
     content.innerHTML = "";
+    confidence.textContent = "";
+    confidence.classList.add("hidden");
+    confidenceDetail.textContent = "";
+    confidenceDetail.classList.add("hidden");
     return;
   }
 
@@ -989,25 +1186,45 @@ function renderCoachRecommendation() {
   }
 
   content.innerHTML = lines.join("");
+  if (state.editRecommendationConfidence) {
+    confidence.textContent = `Confidence: ${state.editRecommendationConfidence}`;
+    confidence.classList.remove("hidden");
+  } else {
+    confidence.textContent = "";
+    confidence.classList.add("hidden");
+  }
+
+  if (state.editRecommendationConfidenceDetail) {
+    confidenceDetail.textContent = state.editRecommendationConfidenceDetail;
+    confidenceDetail.classList.remove("hidden");
+  } else {
+    confidenceDetail.textContent = "";
+    confidenceDetail.classList.add("hidden");
+  }
   box.classList.remove("hidden");
 }
 
 async function renderCoachAudio() {
   const box = document.getElementById("coachAudioBox");
   const player = document.getElementById("coachAudioPlayer");
+  const videoRow = document.getElementById("coachVideoReviewedRow");
+  const videoCheck = document.getElementById("coachVideoReviewed");
 
-  if (!box || !player || !state.editEnrollmentId) return;
+  if (!box || !player || !videoRow || !videoCheck || !state.editEnrollmentId) return;
 
   const enrollmentId = state.editEnrollmentId;
   const rideNo = state.editRideNo;
   const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
   const audioUrl = assignment?.coach_audio_url || "";
+  const hasVideoPending = !!state.editCoachVideoPending;
+  videoCheck.checked = !!state.editCoachVideoActioned;
+  videoRow.classList.toggle("hidden", !hasVideoPending);
 
   if (!audioUrl) {
     player.pause();
     player.removeAttribute("src");
     player.load();
-    box.classList.add("hidden");
+    box.classList.toggle("hidden", !hasVideoPending);
     return;
   }
 
@@ -1031,8 +1248,49 @@ async function renderCoachAudio() {
     player.pause();
     player.removeAttribute("src");
     player.load();
+    box.classList.toggle("hidden", !hasVideoPending);
+  }
+}
+
+async function renderConsultantAudio() {
+  const box = document.getElementById("consultantAudioBox");
+  const player = document.getElementById("consultantAudioPlayer");
+  if (!box || !player) return;
+
+  if (!state.editConsultantAudioUrl) {
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+    box.classList.add("hidden");
+    return;
+  }
+
+  try {
+    const playbackUrl = await resolveConsultantAudioPlaybackUrl(state.editConsultantAudioUrl);
+    if (!playbackUrl) throw new Error("Missing consultant playback url");
+    player.pause();
+    player.src = playbackUrl;
+    player.load();
+    box.classList.remove("hidden");
+  } catch (e) {
+    console.error("Failed to resolve consultant audio URL:", e);
     box.classList.add("hidden");
   }
+}
+
+async function uploadConsultantAudio(file) {
+  const ext = (file.name.split(".").pop() || "webm").toLowerCase();
+  const key = `${state.editEnrollmentId}/${state.editRideNo}/${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}.${ext}`;
+
+  const { error } = await supabaseClient.storage
+    .from("consultant-audio")
+    .upload(key, file, { upsert: true, contentType: file.type || "audio/webm" });
+
+  if (error) throw error;
+  state.editConsultantAudioUrl = key;
+  await renderConsultantAudio();
 }
 
 function syncEditFields() {
@@ -1044,6 +1302,7 @@ function syncEditFields() {
   syncToggleButtons();
   renderCoachRecommendation();
   renderCoachAudio();
+  renderConsultantAudio();
 }
 
 function openEdit(enrollmentId, rideNo, currentVal) {
@@ -1061,6 +1320,15 @@ state.editIsBracketing = !!existing?.is_bracketing;
 
 state.editCustomDescription = parsed.consultantDescription;
 state.editCoachRecommendation = parsed.recommendation;
+state.editRecommendationPending = !!parsed.recommendationPending;
+state.editRecommendationConfidence = parsed.recommendationConfidence || "";
+state.editRecommendationConfidenceDetail = parsed.recommendationConfidenceDetail || "";
+state.editCoachAudioPending = !!parsed.coachAudioPending;
+state.editCoachAudioActioned = !!parsed.coachAudioActioned;
+state.editCoachVideoPending = !!parsed.coachVideoPending;
+state.editCoachVideoActioned = !!parsed.coachVideoActioned;
+state.editCoachAudioPlayed = false;
+state.editConsultantAudioUrl = parsed.consultantAudioUrl || "";
 
 state.drillSearch = "";
 
@@ -1081,6 +1349,15 @@ function closeEdit() {
   state.drillSearch = "";
   state.editCustomDescription = "";
   state.editCoachRecommendation = null;
+  state.editRecommendationPending = false;
+  state.editRecommendationConfidence = "";
+  state.editRecommendationConfidenceDetail = "";
+  state.editCoachAudioPending = false;
+  state.editCoachAudioActioned = false;
+  state.editCoachVideoPending = false;
+  state.editCoachVideoActioned = false;
+  state.editCoachAudioPlayed = false;
+  state.editConsultantAudioUrl = "";
 
   const player = document.getElementById("coachAudioPlayer");
   if (player) {
@@ -1108,7 +1385,17 @@ const parsedExisting = parseCoachRecommendation(existing?.custom_description);
 
 const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
   norm(customDescription) || null,
-  parsedExisting.recommendation
+  parsedExisting.recommendation,
+  {
+    recommendationPending: state.editRecommendationPending && !!parsedExisting.recommendation,
+    recommendationConfidence: parsedExisting.recommendationConfidence,
+    recommendationConfidenceDetail: parsedExisting.recommendationConfidenceDetail,
+    coachAudioPending: state.editCoachAudioPending,
+    coachAudioActioned: state.editCoachAudioActioned,
+    coachVideoPending: state.editCoachVideoPending,
+    coachVideoActioned: state.editCoachVideoActioned,
+    consultantAudioUrl: state.editConsultantAudioUrl,
+  }
 );
 
   const enrollment = state.rows.find((r) => r.id === enrollmentId);
@@ -1194,6 +1481,17 @@ async function handleSaveEdit() {
   if (!state.editEnrollmentId) return;
 
   try {
+    if (state.editRecommendationPending) {
+      state.editRecommendationPending = false;
+    }
+    if (state.editCoachAudioPending && state.editCoachAudioPlayed) {
+      state.editCoachAudioPending = false;
+      state.editCoachAudioActioned = true;
+    }
+    if (state.editCoachVideoPending && state.editCoachVideoActioned) {
+      state.editCoachVideoPending = false;
+    }
+
     await upsertAssignment(
       state.editEnrollmentId,
       state.editRideNo,
@@ -1335,9 +1633,38 @@ function wireEvents() {
     syncToggleButtons();
   });
 
-    els.editCustomDescription.addEventListener("input", (e) => {
+  els.editCustomDescription.addEventListener("input", (e) => {
     state.editCustomDescription = e.target.value;
   });
+
+  const coachAudioPlayer = document.getElementById("coachAudioPlayer");
+  if (coachAudioPlayer) {
+    coachAudioPlayer.addEventListener("play", () => {
+      state.editCoachAudioPlayed = true;
+    });
+  }
+
+  const coachVideoReviewed = document.getElementById("coachVideoReviewed");
+  if (coachVideoReviewed) {
+    coachVideoReviewed.addEventListener("change", (e) => {
+      state.editCoachVideoActioned = !!e.target.checked;
+    });
+  }
+
+  const consultantAudioUpload = document.getElementById("consultantAudioUpload");
+  if (consultantAudioUpload) {
+    consultantAudioUpload.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file || !state.editEnrollmentId) return;
+      try {
+        await uploadConsultantAudio(file);
+      } catch (err) {
+        window.alert(`Consultant audio upload failed: ${String(err?.message ?? err ?? "Unknown")}`);
+      } finally {
+        e.target.value = "";
+      }
+    });
+  }
 
   els.drillSearch.addEventListener("input", (e) => {
     state.drillSearch = e.target.value;
