@@ -906,7 +906,7 @@ async function resolveConsultantAudioPlaybackUrl(storedValue) {
   if (/^https?:\/\//i.test(value)) return value;
 
   const { data, error } = await supabaseClient.storage
-    .from("consultant-audio")
+    .from("coach-audio")
     .createSignedUrl(value, 60 * 60 * 8);
 
   if (error) throw error;
@@ -1336,7 +1336,7 @@ async function uploadConsultantAudio(file) {
     .slice(2)}.${ext}`;
 
   const { error } = await supabaseClient.storage
-    .from("consultant-audio")
+    .from("coach-audio")
     .upload(key, file, { upsert: true, contentType: file.type || "audio/webm" });
 
   if (error) throw error;
