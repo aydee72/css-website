@@ -279,8 +279,7 @@ function parseCoachRecommendation(customDescription) {
   const cleanedLines = lines.filter(
     (l) =>
       !l.startsWith("[COACH_") &&
-      !l.startsWith(CONSULTANT_AUDIO_URL_PREFIX) &&
-      !l.startsWith(CONSULTANT_AUDIO_ACTIONED_FOR_PREFIX)
+      !l.startsWith("[CONSULTANT_")
   );
 
   const consultantDescription = cleanedLines.join("\n").trim();
