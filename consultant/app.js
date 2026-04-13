@@ -199,6 +199,7 @@ const COACH_VIDEO_ACTIONED_PREFIX = "[COACH_VIDEO_ACTIONED]";
 const COACH_VIDEO_ACTIONED_FOR_PREFIX = "[COACH_VIDEO_ACTIONED_FOR]";
 const COACH_CONSULTANT_REVIEWED_FOR_PREFIX = "[COACH_CONSULTANT_REVIEWED_FOR]";
 const CONSULTANT_AUDIO_URL_PREFIX = "[CONSULTANT_AUDIO_URL]";
+const CONSULTANT_AUDIO_ACTIONED_FOR_PREFIX = "[CONSULTANT_AUDIO_ACTIONED_FOR]";
 
 function cleanText(input) {
   return String(input ?? "").replace(/\r\n/g, "\n").trim();
@@ -278,7 +279,8 @@ function parseCoachRecommendation(customDescription) {
   const cleanedLines = lines.filter(
     (l) =>
       !l.startsWith("[COACH_") &&
-      !l.startsWith(CONSULTANT_AUDIO_URL_PREFIX)
+      !l.startsWith(CONSULTANT_AUDIO_URL_PREFIX) &&
+      !l.startsWith(CONSULTANT_AUDIO_ACTIONED_FOR_PREFIX)
   );
 
   const consultantDescription = cleanedLines.join("\n").trim();
