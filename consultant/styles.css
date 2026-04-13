@@ -463,6 +463,10 @@ textarea {
 
 .consultant-audio-actions {
   margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .hidden {
