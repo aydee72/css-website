@@ -1463,6 +1463,8 @@ async function uploadRecordedConsultantAudio() {
   });
 
   await uploadConsultantAudio(file);
+  clearRecordedAudioState();
+  syncConsultantRecordingUI();
 }
 
 function syncEditFields() {
