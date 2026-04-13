@@ -104,10 +104,20 @@
         </div>
 
         <div class="consultant-audio-actions">
+          <button id="consultantRecordBtn" class="chip-btn" type="button">Record</button>
+          <button id="consultantStopBtn" class="chip-btn" type="button">Stop</button>
+          <button id="consultantPlayBtn" class="chip-btn" type="button">Play</button>
+          <button id="consultantUploadBtn" class="chip-btn" type="button">Upload recording</button>
+          <button id="consultantClearBtn" class="chip-btn" type="button">Clear</button>
           <label class="file-btn">
-            Upload consultant audio
+            Choose file
             <input id="consultantAudioUpload" type="file" accept="audio/*" hidden />
           </label>
+        </div>
+
+        <div id="consultantAudioPreviewBox" class="coach-audio-box hidden">
+          <div class="coach-audio-title">Recorded consultant audio preview</div>
+          <audio id="consultantAudioPreviewPlayer" controls preload="none"></audio>
         </div>
 
         <label class="field">
