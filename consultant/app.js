@@ -873,7 +873,11 @@ function hasRideAudio(enrollmentId, rideNo) {
   const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
   if (!assignment) return false;
   const parsed = parseCoachRecommendation(assignment?.custom_description);
-  return !!assignment?.coach_audio_url || !!parsed.coachAudioPending;
+  return (
+    !!assignment?.coach_audio_url ||
+    !!parsed.coachAudioPending ||
+    !!parsed.consultantAudioUrl
+  );
 }
 
 function hasRideVideoPending(enrollmentId, rideNo) {
@@ -1459,7 +1463,7 @@ const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
   const enrollment = state.rows.find((r) => r.id === enrollmentId);
   const personId = enrollment?.person?.id ?? null;
 
-    if (!v) {
+    if (!v && !cleanText(mergedCustomDescription)) {
     const { error } = await supabaseClient
       .from("assignments")
       .delete()
