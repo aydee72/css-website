@@ -189,17 +189,13 @@ function escapeHtml(str) {
 /* ===== Coach Recommendation Support ===== */
 
 const COACH_RECOMMENDATION_PREFIX = "[COACH_RECOMMENDATION]";
-const COACH_RECOMMENDATION_PENDING_PREFIX = "[COACH_RECOMMENDATION_PENDING]";
-const COACH_RECOMMENDATION_CONFIDENCE_PREFIX = "[COACH_RECOMMENDATION_CONFIDENCE]";
-const COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX = "[COACH_RECOMMENDATION_CONFIDENCE_DETAIL]";
-const COACH_AUDIO_PENDING_PREFIX = "[COACH_AUDIO_PENDING]";
-const COACH_AUDIO_ACTIONED_PREFIX = "[COACH_AUDIO_ACTIONED]";
-const COACH_VIDEO_PENDING_PREFIX = "[COACH_VIDEO_PENDING]";
-const COACH_VIDEO_ACTIONED_PREFIX = "[COACH_VIDEO_ACTIONED]";
-const COACH_VIDEO_ACTIONED_FOR_PREFIX = "[COACH_VIDEO_ACTIONED_FOR]";
-const COACH_CONSULTANT_REVIEWED_FOR_PREFIX = "[COACH_CONSULTANT_REVIEWED_FOR]";
+const COACH_RECOMMENDATION_ACTIONED_PREFIX = "[COACH_RECOMMENDATION_ACTIONED_AT]";
+const COACH_AUDIO_ACTIONED_FOR_PREFIX = "[COACH_AUDIO_ACTIONED_FOR]";
 const CONSULTANT_AUDIO_URL_PREFIX = "[CONSULTANT_AUDIO_URL]";
 const CONSULTANT_AUDIO_ACTIONED_FOR_PREFIX = "[CONSULTANT_AUDIO_ACTIONED_FOR]";
+const COACH_CONSULTANT_REVIEWED_FOR_PREFIX = "[COACH_CONSULTANT_REVIEWED_FOR]";
+const CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX = "[CONSULTANT_VIDEO_ACTIONED_FOR]";
+const COACH_VIDEO_ACTIONED_FOR_PREFIX = "[COACH_VIDEO_ACTIONED_FOR]";
 
 function cleanText(input) {
   return String(input ?? "").replace(/\r\n/g, "\n").trim();
@@ -216,54 +212,9 @@ function emptyRecommendation() {
   };
 }
 
-function parseBoolText(value) {
-  const v = String(value ?? "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
-}
-
-function findMetadataLine(lines, prefix) {
-  return lines.find((l) => l.startsWith(prefix)) || "";
-}
-
 function metadataLineValue(lines, prefix) {
-  const line = findMetadataLine(lines, prefix);
+  const line = lines.find((l) => l.startsWith(prefix));
   return line ? line.slice(prefix.length).trim() : "";
-}
-
-function parseReviewedRideNumbers(value) {
-  const raw = String(value ?? "").trim();
-  const rides = new Set();
-
-  if (!raw) return rides;
-
-  const addNumericToken = (token) => {
-    const n = Number(String(token ?? "").trim());
-    if (Number.isFinite(n) && n > 0) {
-      rides.add(n);
-    }
-  };
-
-  if (raw.startsWith("{") || raw.startsWith("[")) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        for (const item of parsed) addNumericToken(item);
-      } else if (parsed && typeof parsed === "object") {
-        for (const [k, v] of Object.entries(parsed)) {
-          if (parseBoolText(v)) addNumericToken(k);
-        }
-      }
-    } catch {
-      // noop (fallback parsing below)
-    }
-  }
-
-  if (!rides.size) {
-    const tokens = raw.split(/[,\s;|]+/).filter(Boolean);
-    for (const token of tokens) addNumericToken(token);
-  }
-
-  return rides;
 }
 
 function parseCoachRecommendation(customDescription) {
@@ -272,106 +223,105 @@ function parseCoachRecommendation(customDescription) {
     .map((l) => l.trim())
     .filter(Boolean);
 
-  const coachLine = lines.find((l) =>
-    l.startsWith(COACH_RECOMMENDATION_PREFIX)
+  const coachLine = lines.find((l) => l.startsWith(COACH_RECOMMENDATION_PREFIX));
+  const actionedLine = lines.find((l) => l.startsWith(COACH_RECOMMENDATION_ACTIONED_PREFIX));
+  const audioActionedLine = lines.find((l) => l.startsWith(COACH_AUDIO_ACTIONED_FOR_PREFIX));
+  const consultantAudioUrlLine = lines.find((l) => l.startsWith(CONSULTANT_AUDIO_URL_PREFIX));
+  const consultantAudioActionedLine = lines.find((l) =>
+    l.startsWith(CONSULTANT_AUDIO_ACTIONED_FOR_PREFIX)
+  );
+  const coachConsultantReviewedLine = lines.find((l) =>
+    l.startsWith(COACH_CONSULTANT_REVIEWED_FOR_PREFIX)
+  );
+  const consultantVideoActionedLine = lines.find((l) =>
+    l.startsWith(CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX)
+  );
+  const coachVideoActionedLine = lines.find((l) =>
+    l.startsWith(COACH_VIDEO_ACTIONED_FOR_PREFIX)
   );
 
-  const cleanedLines = lines.filter(
-    (l) =>
-      !l.startsWith("[COACH_") &&
-      !l.startsWith("[CONSULTANT_")
-  );
+  const consultantDescription = lines
+    .filter((l) => !l.startsWith("[COACH_") && !l.startsWith("[CONSULTANT_"))
+    .join("\n")
+    .trim();
 
-  const consultantDescription = cleanedLines.join("\n").trim();
+  const consultantActionedAtRaw = actionedLine
+    ? actionedLine.slice(COACH_RECOMMENDATION_ACTIONED_PREFIX.length).trim()
+    : "";
+  const consultantActionedAt = consultantActionedAtRaw || null;
 
-  const recommendationPending = parseBoolText(
-    metadataLineValue(lines, COACH_RECOMMENDATION_PENDING_PREFIX)
-  );
-  const recommendationConfidence = cleanText(
-    metadataLineValue(lines, COACH_RECOMMENDATION_CONFIDENCE_PREFIX)
-  );
-  const recommendationConfidenceDetail = cleanText(
-    metadataLineValue(lines, COACH_RECOMMENDATION_CONFIDENCE_DETAIL_PREFIX)
-  );
-  const coachAudioPending = parseBoolText(
-    metadataLineValue(lines, COACH_AUDIO_PENDING_PREFIX)
-  );
-  const coachAudioActioned = parseBoolText(
-    metadataLineValue(lines, COACH_AUDIO_ACTIONED_PREFIX)
-  );
-  const coachVideoPending = parseBoolText(
-    metadataLineValue(lines, COACH_VIDEO_PENDING_PREFIX)
-  );
-  const coachVideoActioned = parseBoolText(
-    metadataLineValue(lines, COACH_VIDEO_ACTIONED_PREFIX)
-  );
-  const consultantAudioUrl = cleanText(
-    metadataLineValue(lines, CONSULTANT_AUDIO_URL_PREFIX)
-  );
-  const consultantReviewedForRaw = cleanText(
-    metadataLineValue(lines, COACH_CONSULTANT_REVIEWED_FOR_PREFIX)
-  );
-  const consultantReviewedForRides = parseReviewedRideNumbers(
-    consultantReviewedForRaw
-  );
-  const consultantReviewedAny =
-    parseBoolText(consultantReviewedForRaw) || consultantReviewedForRides.size > 0;
+  const consultantAudioActionedForRaw = audioActionedLine
+    ? audioActionedLine.slice(COACH_AUDIO_ACTIONED_FOR_PREFIX.length).trim()
+    : "";
+  const consultantAudioActionedFor = consultantAudioActionedForRaw || null;
+
+  const consultantAudioUrlRaw = consultantAudioUrlLine
+    ? consultantAudioUrlLine.slice(CONSULTANT_AUDIO_URL_PREFIX.length).trim()
+    : "";
+  const consultantAudioUrl = consultantAudioUrlRaw || null;
+
+  const coachAudioActionedForRaw = consultantAudioActionedLine
+    ? consultantAudioActionedLine.slice(CONSULTANT_AUDIO_ACTIONED_FOR_PREFIX.length).trim()
+    : "";
+  const coachAudioActionedFor = coachAudioActionedForRaw || null;
+
+  const coachConsultantReviewedForRaw = coachConsultantReviewedLine
+    ? coachConsultantReviewedLine.slice(COACH_CONSULTANT_REVIEWED_FOR_PREFIX.length).trim()
+    : "";
+  const coachConsultantReviewedFor = coachConsultantReviewedForRaw || null;
+
+  const consultantVideoActionedForRaw = consultantVideoActionedLine
+    ? consultantVideoActionedLine.slice(CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX.length).trim()
+    : "";
+  const consultantVideoActionedFor = consultantVideoActionedForRaw || null;
+
+  const coachVideoActionedForRaw = coachVideoActionedLine
+    ? coachVideoActionedLine.slice(COACH_VIDEO_ACTIONED_FOR_PREFIX.length).trim()
+    : "";
+  const coachVideoActionedFor = coachVideoActionedForRaw || null;
 
   if (!coachLine) {
     return {
       recommendation: null,
       consultantDescription,
-      recommendationPending,
-      recommendationConfidence,
-      recommendationConfidenceDetail,
-      coachAudioPending,
-      coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      consultantActionedAt,
+      consultantAudioActionedFor,
       consultantAudioUrl,
-      consultantReviewedAny,
-      consultantReviewedForRides,
+      coachAudioActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
+      coachVideoActionedFor,
     };
   }
 
-  const payload = coachLine
-    .slice(COACH_RECOMMENDATION_PREFIX.length)
-    .trim();
+  const payload = coachLine.slice(COACH_RECOMMENDATION_PREFIX.length).trim();
 
   if (!payload) {
     return {
       recommendation: null,
       consultantDescription,
-      recommendationPending,
-      recommendationConfidence,
-      recommendationConfidenceDetail,
-      coachAudioPending,
-      coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      consultantActionedAt,
+      consultantAudioActionedFor,
       consultantAudioUrl,
-      consultantReviewedAny,
-      consultantReviewedForRides,
+      coachAudioActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
+      coachVideoActionedFor,
     };
   }
 
   if (!payload.startsWith("{")) {
     const note = cleanText(payload);
     return {
-      recommendation: note
-        ? { ...emptyRecommendation(), note }
-        : null,
+      recommendation: note ? { ...emptyRecommendation(), note } : null,
       consultantDescription,
-      recommendationPending,
-      recommendationConfidence,
-      recommendationConfidenceDetail,
-      coachAudioPending,
-      coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      consultantActionedAt,
+      consultantAudioActionedFor,
       consultantAudioUrl,
-      consultantReviewedAny,
-      consultantReviewedForRides,
+      coachAudioActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
+      coachVideoActionedFor,
     };
   }
 
@@ -384,20 +334,8 @@ function parseCoachRecommendation(customDescription) {
       isVideo: !!parsed?.isVideo,
       isBracketing: !!parsed?.isBracketing,
       note: cleanText(parsed?.note),
-      confidence:
-        cleanText(parsed?.confidence) ||
-        cleanText(parsed?.confidenceBand) ||
-        cleanText(parsed?.confidencePct),
+      confidence: cleanText(parsed?.confidence),
     };
-
-    const jsonConfidence =
-      cleanText(parsed?.confidenceBand) ||
-      cleanText(parsed?.confidence) ||
-      cleanText(parsed?.confidencePct);
-    const jsonConfidenceDetail =
-      cleanText(parsed?.confidenceDetail) ||
-      cleanText(parsed?.confidenceExplanation) ||
-      cleanText(parsed?.confidenceReason);
 
     const hasAny =
       recommendation.drill ||
@@ -409,37 +347,26 @@ function parseCoachRecommendation(customDescription) {
     return {
       recommendation: hasAny ? recommendation : null,
       consultantDescription,
-      recommendationPending,
-      recommendationConfidence:
-        recommendationConfidence || recommendation.confidence || jsonConfidence,
-      recommendationConfidenceDetail:
-        recommendationConfidenceDetail || jsonConfidenceDetail,
-      coachAudioPending,
-      coachAudioActioned,
-      coachVideoPending:
-        coachVideoPending || (!!recommendation.isVideo && !coachVideoActioned),
-      coachVideoActioned,
+      consultantActionedAt,
+      consultantAudioActionedFor,
       consultantAudioUrl,
-      consultantReviewedAny,
-      consultantReviewedForRides,
+      coachAudioActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
+      coachVideoActionedFor,
     };
   } catch {
     const note = cleanText(payload);
     return {
-      recommendation: note
-        ? { ...emptyRecommendation(), note }
-        : null,
+      recommendation: note ? { ...emptyRecommendation(), note } : null,
       consultantDescription,
-      recommendationPending,
-      recommendationConfidence,
-      recommendationConfidenceDetail,
-      coachAudioPending,
-      coachAudioActioned,
-      coachVideoPending,
-      coachVideoActioned,
+      consultantActionedAt,
+      consultantAudioActionedFor,
       consultantAudioUrl,
-      consultantReviewedAny,
-      consultantReviewedForRides,
+      coachAudioActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
+      coachVideoActionedFor,
     };
   }
 }
@@ -447,7 +374,13 @@ function parseCoachRecommendation(customDescription) {
 function buildCustomDescriptionWithCoachRecommendation(
   consultantDescription,
   recommendation,
-  metadata = {}
+  consultantActionedAt = null,
+  consultantAudioActionedFor = null,
+  consultantAudioUrl = null,
+  coachAudioActionedFor = null,
+  coachConsultantReviewedFor = null,
+  consultantVideoActionedFor = null,
+  coachVideoActionedFor = null
 ) {
   const cleanConsultant = cleanText(consultantDescription);
 
@@ -466,37 +399,107 @@ function buildCustomDescriptionWithCoachRecommendation(
         isVideo: !!recommendation.isVideo,
         isBracketing: !!recommendation.isBracketing,
         note: cleanText(recommendation.note),
-        confidence:
-          cleanText(recommendation.confidence) ||
-          cleanText(metadata.recommendationConfidence),
+        confidence: cleanText(recommendation.confidence),
       })}`
     : "";
 
-  const metadataLines = [];
-  if (cleanText(metadata.consultantAudioUrl)) {
-    metadataLines.push(
-      `${CONSULTANT_AUDIO_URL_PREFIX} ${cleanText(metadata.consultantAudioUrl)}`
-    );
-  }
-  const reviewedForRaw = cleanText(metadata.consultantReviewedFor);
-  if (reviewedForRaw) {
-    metadataLines.push(
-      `${COACH_CONSULTANT_REVIEWED_FOR_PREFIX} ${reviewedForRaw}`
-    );
-  }
-  if (metadata.coachVideoPending) {
-    metadataLines.push(`${COACH_VIDEO_PENDING_PREFIX} true`);
-  }
-  if (metadata.coachVideoActioned) {
-    metadataLines.push(`${COACH_VIDEO_ACTIONED_PREFIX} true`);
-  }
+  const actionedLine =
+    hasRecommendation && cleanText(consultantActionedAt)
+      ? `${COACH_RECOMMENDATION_ACTIONED_PREFIX} ${cleanText(consultantActionedAt)}`
+      : "";
 
-  const out = [cleanConsultant, coachLine, ...metadataLines]
+  const audioActionedLine = cleanText(consultantAudioActionedFor)
+    ? `${COACH_AUDIO_ACTIONED_FOR_PREFIX} ${cleanText(consultantAudioActionedFor)}`
+    : "";
+
+  const consultantAudioUrlLine = cleanText(consultantAudioUrl)
+    ? `${CONSULTANT_AUDIO_URL_PREFIX} ${cleanText(consultantAudioUrl)}`
+    : "";
+
+  const coachAudioActionedLine = cleanText(coachAudioActionedFor)
+    ? `${CONSULTANT_AUDIO_ACTIONED_FOR_PREFIX} ${cleanText(coachAudioActionedFor)}`
+    : "";
+
+  const coachConsultantReviewedLine = cleanText(coachConsultantReviewedFor)
+    ? `${COACH_CONSULTANT_REVIEWED_FOR_PREFIX} ${cleanText(coachConsultantReviewedFor)}`
+    : "";
+
+  const consultantVideoActionedLine = cleanText(consultantVideoActionedFor)
+    ? `${CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX} ${cleanText(consultantVideoActionedFor)}`
+    : "";
+
+  const coachVideoActionedLine = cleanText(coachVideoActionedFor)
+    ? `${COACH_VIDEO_ACTIONED_FOR_PREFIX} ${cleanText(coachVideoActionedFor)}`
+    : "";
+
+  const out = [
+    cleanConsultant,
+    coachLine,
+    actionedLine,
+    audioActionedLine,
+    consultantAudioUrlLine,
+    coachAudioActionedLine,
+    coachConsultantReviewedLine,
+    consultantVideoActionedLine,
+    coachVideoActionedLine,
+  ]
     .filter(Boolean)
     .join("\n")
     .trim();
 
   return out || null;
+}
+
+function consultantReviewSignature(assignment) {
+  if (!assignment) return null;
+  const parsed = parseCoachRecommendation(assignment.custom_description);
+
+  const signatureParts = [
+    norm(assignment.drill_code),
+    norm(assignment.custom_text),
+    norm(assignment.turn_text),
+    assignment.is_video ? "1" : "0",
+    assignment.is_bracketing ? "1" : "0",
+    norm(parsed.consultantDescription),
+    norm(parsed.consultantAudioUrl),
+  ];
+
+  const hasConsultantContent =
+    !!signatureParts[0] ||
+    !!signatureParts[1] ||
+    !!signatureParts[2] ||
+    signatureParts[3] === "1" ||
+    signatureParts[4] === "1" ||
+    !!signatureParts[5] ||
+    !!signatureParts[6];
+
+  if (!hasConsultantContent) return null;
+  return signatureParts.join("|");
+}
+
+function consultantVideoRequestSignature(assignment) {
+  if (!assignment?.is_video) return null;
+  const parsed = parseCoachRecommendation(assignment.custom_description);
+  return [
+    norm(assignment.drill_code),
+    norm(assignment.custom_text),
+    norm(assignment.turn_text),
+    assignment.is_video ? "1" : "0",
+    assignment.is_bracketing ? "1" : "0",
+    norm(parsed.consultantDescription),
+  ].join("|");
+}
+
+function coachRecommendationVideoRequestSignature(recommendation) {
+  if (!recommendation?.isVideo) return null;
+  return [
+    norm(splitDrillValue(recommendation.drill).drill_code),
+    norm(splitDrillValue(recommendation.drill).custom_text),
+    norm(recommendation.turnText),
+    recommendation.isVideo ? "1" : "0",
+    recommendation.isBracketing ? "1" : "0",
+    "",
+  ].join("|");
 }
 
 async function loadEvents() {
@@ -860,32 +863,69 @@ function getRideDisplay(enrollment, rideNo) {
 function hasRideRecommendation(enrollmentId, rideNo) {
   const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
   if (!assignment) return false;
-
   const parsed = parseCoachRecommendation(assignment?.custom_description);
   return !!parsed.recommendation;
 }
 
 function hasRideRecommendationPending(enrollmentId, rideNo) {
   const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
-  if (!assignment) return false;
   const parsed = parseCoachRecommendation(assignment?.custom_description);
-  const reviewedForRide = parsed.consultantReviewedForRides?.has(rideNo);
-  const reviewed = !!reviewedForRide || !!parsed.consultantReviewedAny;
-  return !!parsed.recommendation && !reviewed;
+  return !!parsed.recommendation && !parsed.consultantActionedAt;
 }
 
 function hasRideAudio(enrollmentId, rideNo) {
   const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
-  if (!assignment) return false;
-  const parsed = parseCoachRecommendation(assignment?.custom_description);
-  return !!assignment?.coach_audio_url || !!parsed.coachAudioPending;
+  if (!assignment?.coach_audio_url) return false;
+  const parsed = parseCoachRecommendation(assignment.custom_description);
+  return parsed.consultantAudioActionedFor !== assignment.coach_audio_url;
 }
 
 function hasRideVideoPending(enrollmentId, rideNo) {
   const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
-  if (!assignment) return false;
   const parsed = parseCoachRecommendation(assignment?.custom_description);
-  return !!parsed.coachVideoPending;
+  const signature = coachRecommendationVideoRequestSignature(parsed.recommendation);
+  if (!signature) return false;
+  return parsed.consultantVideoActionedFor !== signature;
+}
+
+function hasPendingConsultantAudio(assignment) {
+  if (!assignment) return false;
+  const parsed = parseCoachRecommendation(assignment.custom_description);
+  if (!parsed.consultantAudioUrl) return false;
+  return parsed.coachAudioActionedFor !== parsed.consultantAudioUrl;
+}
+
+function hasPendingConsultantVideo(assignment) {
+  if (!assignment?.is_video) return false;
+  const parsed = parseCoachRecommendation(assignment.custom_description);
+  const signature = consultantVideoRequestSignature(assignment);
+  if (!signature) return false;
+  return parsed.coachVideoActionedFor !== signature;
+}
+
+function hasPendingConsultantUpdate(assignment) {
+  if (!assignment) return false;
+  const parsed = parseCoachRecommendation(assignment.custom_description);
+  if (!parsed.recommendation) return false;
+
+  const signature = consultantReviewSignature(assignment);
+  if (!signature) return false;
+
+  const recommendedSplit = splitDrillValue(parsed.recommendation.drill);
+  const recommendationSignature = [
+    norm(recommendedSplit.drill_code),
+    norm(recommendedSplit.custom_text),
+    norm(parsed.recommendation.turnText),
+    parsed.recommendation.isVideo ? "1" : "0",
+    parsed.recommendation.isBracketing ? "1" : "0",
+    "",
+    "",
+  ].join("|");
+
+  const isConsultantSavedState = signature !== recommendationSignature;
+  if (!isConsultantSavedState) return false;
+
+  return parsed.coachConsultantReviewedFor !== signature;
 }
 
 async function resolveCoachAudioPlaybackUrl(storedValue) {
@@ -1489,30 +1529,28 @@ function openEdit(enrollmentId, rideNo, currentVal) {
   state.editValue = currentVal ?? "";
 
   const existing = state.assignByEnroll[enrollmentId]?.[rideNo];
+  const parsed = parseCoachRecommendation(existing?.custom_description);
 
-const parsed = parseCoachRecommendation(existing?.custom_description);
+  state.editTurnText = existing?.turn_text ?? "";
+  state.editIsVideo = !!existing?.is_video;
+  state.editIsBracketing = !!existing?.is_bracketing;
+  state.editCustomDescription = parsed.consultantDescription;
+  state.editCoachRecommendation = parsed.recommendation;
+  state.editRecommendationPending = !!parsed.recommendation && !parsed.consultantActionedAt;
+  state.editRecommendationConfidence = parsed.recommendation?.confidence || "";
+  state.editRecommendationConfidenceDetail = "";
+  state.editCoachAudioPending = !!existing?.coach_audio_url && parsed.consultantAudioActionedFor !== existing.coach_audio_url;
+  state.editCoachAudioActioned = !!existing?.coach_audio_url && parsed.consultantAudioActionedFor === existing.coach_audio_url;
+  const coachVideoSignature = coachRecommendationVideoRequestSignature(parsed.recommendation);
+  state.editCoachVideoPending = !!coachVideoSignature && parsed.consultantVideoActionedFor !== coachVideoSignature;
+  state.editCoachVideoActioned = !!coachVideoSignature && parsed.consultantVideoActionedFor === coachVideoSignature;
+  state.editCoachAudioPlayed = false;
+  state.editConsultantAudioUrl = parsed.consultantAudioUrl || "";
+  state.isRecording = false;
+  clearRecordedAudioState();
+  state.mediaRecorder = null;
 
-state.editTurnText = existing?.turn_text ?? "";
-state.editIsVideo = !!existing?.is_video;
-state.editIsBracketing = !!existing?.is_bracketing;
-
-state.editCustomDescription = parsed.consultantDescription;
-state.editCoachRecommendation = parsed.recommendation;
-state.editRecommendationPending = !!parsed.recommendationPending;
-state.editRecommendationConfidence =
-  parsed.recommendation?.confidence || parsed.recommendationConfidence || "";
-state.editRecommendationConfidenceDetail = parsed.recommendationConfidenceDetail || "";
-state.editCoachAudioPending = !!parsed.coachAudioPending;
-state.editCoachAudioActioned = !!parsed.coachAudioActioned;
-state.editCoachVideoPending = !!parsed.coachVideoPending;
-state.editCoachVideoActioned = !!parsed.coachVideoActioned;
-state.editCoachAudioPlayed = false;
-state.editConsultantAudioUrl = parsed.consultantAudioUrl || "";
-state.isRecording = false;
-clearRecordedAudioState();
-state.mediaRecorder = null;
-
-state.drillSearch = "";
+  state.drillSearch = "";
 
   syncEditFields();
   renderDrillList();
@@ -1564,47 +1602,80 @@ async function upsertAssignment(
   turnText,
   isVideo,
   isBracketing,
-  customDescription
+  customDescription,
+  consultantActionedAt,
+  consultantAudioActionedFor = undefined,
+  consultantAudioUrl = undefined,
+  coachAudioActionedFor = undefined,
+  consultantVideoActionedFor = undefined
 ) {
   const v = norm(value);
 
-  const existing = state.assignByEnroll[enrollmentId]?.[rideNo] ?? null;
-const parsedExisting = parseCoachRecommendation(existing?.custom_description);
-  const reviewedForRides = new Set(parsedExisting.consultantReviewedForRides ?? []);
-  if (parsedExisting.recommendation && rideNo > 0) {
-    reviewedForRides.add(rideNo);
-  }
-  const consultantReviewedFor = Array.from(reviewedForRides)
-    .sort((a, b) => a - b)
-    .join(",");
-
-const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
-  norm(customDescription) || null,
-  parsedExisting.recommendation,
-  {
-    recommendationPending: state.editRecommendationPending && !!parsedExisting.recommendation,
-    recommendationConfidence: parsedExisting.recommendationConfidence,
-    recommendationConfidenceDetail: parsedExisting.recommendationConfidenceDetail,
-    coachAudioPending: state.editCoachAudioPending,
-    coachAudioActioned: state.editCoachAudioActioned,
-    coachVideoPending: state.editCoachVideoPending,
-    coachVideoActioned: state.editCoachVideoActioned,
-    consultantAudioUrl: state.editConsultantAudioUrl,
-    consultantReviewedFor,
-  }
-);
-
   const enrollment = state.rows.find((r) => r.id === enrollmentId);
   const personId = enrollment?.person?.id ?? null;
+  const existing = state.assignByEnroll[enrollmentId]?.[rideNo] ?? null;
+  const parsedExisting = parseCoachRecommendation(existing?.custom_description);
 
-    if (!v) {
-    const { error } = await supabaseClient
-      .from("assignments")
-      .delete()
-      .eq("enrollment_id", enrollmentId)
-      .eq("ride_no", rideNo);
+  const nextConsultantAudioActionedFor =
+    consultantAudioActionedFor === undefined
+      ? parsedExisting.consultantAudioActionedFor
+      : consultantAudioActionedFor;
 
-    if (error) throw error;
+  const nextConsultantAudioUrl =
+    consultantAudioUrl === undefined
+      ? parsedExisting.consultantAudioUrl
+      : consultantAudioUrl;
+
+  const nextCoachAudioActionedFor =
+    coachAudioActionedFor === undefined
+      ? parsedExisting.coachAudioActionedFor
+      : coachAudioActionedFor;
+
+  const nextCoachConsultantReviewedFor = parsedExisting.coachConsultantReviewedFor;
+
+  const nextConsultantVideoActionedFor =
+    consultantVideoActionedFor === undefined
+      ? parsedExisting.consultantVideoActionedFor
+      : consultantVideoActionedFor;
+
+  const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
+    norm(customDescription) || null,
+    parsedExisting.recommendation,
+    parsedExisting.recommendation ? consultantActionedAt : null,
+    nextConsultantAudioActionedFor,
+    nextConsultantAudioUrl,
+    nextCoachAudioActionedFor,
+    nextCoachConsultantReviewedFor,
+    nextConsultantVideoActionedFor,
+    parsedExisting.coachVideoActionedFor
+  );
+
+  if (!v) {
+    if (parsedExisting.recommendation) {
+      const { error } = await supabaseClient.from("assignments").upsert(
+        {
+          enrollment_id: enrollmentId,
+          ride_no: rideNo,
+          drill_code: null,
+          turn_text: null,
+          is_video: false,
+          is_bracketing: false,
+          custom_text: null,
+          custom_description: mergedCustomDescription,
+        },
+        { onConflict: "enrollment_id,ride_no" }
+      );
+
+      if (error) throw error;
+    } else {
+      const { error } = await supabaseClient
+        .from("assignments")
+        .delete()
+        .eq("enrollment_id", enrollmentId)
+        .eq("ride_no", rideNo);
+
+      if (error) throw error;
+    }
   } else {
     const s = splitDrillValue(v);
 
@@ -1624,19 +1695,19 @@ const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
       if (drillRow?.code) {
         drill_code = s.drill_code;
         custom_text = null;
-        custom_description = null;
+        custom_description = mergedCustomDescription;
       } else {
         drill_code = null;
         custom_text = v;
-        custom_description = norm(customDescription) || null;
+        custom_description = mergedCustomDescription;
       }
     } else {
       drill_code = null;
       custom_text = s.custom_text;
-      custom_description = norm(customDescription) || null;
+      custom_description = mergedCustomDescription;
     }
 
-        const { error } = await supabaseClient.from("assignments").upsert(
+    const { error } = await supabaseClient.from("assignments").upsert(
       {
         enrollment_id: enrollmentId,
         ride_no: rideNo,
@@ -1645,7 +1716,7 @@ const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
         is_video: !!isVideo,
         is_bracketing: !!isBracketing,
         custom_text,
-        custom_description: mergedCustomDescription,
+        custom_description,
       },
       { onConflict: "enrollment_id,ride_no" }
     );
@@ -1654,9 +1725,9 @@ const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
   }
 
   if (personId) {
-        const { data: updatedAssignments, error: readErr } = await supabaseClient
+    const { data: updatedAssignments, error: readErr } = await supabaseClient
       .from("assignments")
-            .select("id,enrollment_id,ride_no,drill_code,turn_text,is_video,is_bracketing,custom_text,custom_description,coach_audio_url")
+      .select("id,enrollment_id,ride_no,drill_code,turn_text,is_video,is_bracketing,custom_text,custom_description,coach_audio_url")
       .eq("enrollment_id", enrollmentId)
       .order("ride_no", { ascending: true });
 
@@ -1677,16 +1748,27 @@ async function handleSaveEdit() {
   if (!state.editEnrollmentId) return;
 
   try {
-    if (state.editRecommendationPending) {
-      state.editRecommendationPending = false;
-    }
-    if (state.editCoachAudioPending && state.editCoachAudioPlayed) {
-      state.editCoachAudioPending = false;
-      state.editCoachAudioActioned = true;
-    }
-    if (state.editCoachVideoPending && state.editCoachVideoActioned) {
-      state.editCoachVideoPending = false;
-    }
+    const currentAssignment = state.assignByEnroll[state.editEnrollmentId]?.[state.editRideNo];
+    const parsedCurrent = parseCoachRecommendation(currentAssignment?.custom_description);
+
+    const consultantAudioActionedFor =
+      state.editCoachAudioPlayed && currentAssignment?.coach_audio_url
+        ? currentAssignment.coach_audio_url
+        : undefined;
+
+    const coachVideoRequestSignature = coachRecommendationVideoRequestSignature(
+      parsedCurrent.recommendation
+    );
+
+    const consultantVideoActionedFor =
+      state.editCoachVideoActioned && coachVideoRequestSignature
+        ? coachVideoRequestSignature
+        : undefined;
+
+    const coachAudioActionedFor =
+      state.editConsultantAudioUrl && parsedCurrent.coachAudioActionedFor === state.editConsultantAudioUrl
+        ? parsedCurrent.coachAudioActionedFor
+        : null;
 
     await upsertAssignment(
       state.editEnrollmentId,
@@ -1695,7 +1777,12 @@ async function handleSaveEdit() {
       state.editTurnText,
       state.editIsVideo,
       state.editIsBracketing,
-      state.editCustomDescription
+      state.editCustomDescription,
+      new Date().toISOString(),
+      consultantAudioActionedFor,
+      state.editConsultantAudioUrl || undefined,
+      coachAudioActionedFor,
+      consultantVideoActionedFor
     );
 
     closeEdit();
