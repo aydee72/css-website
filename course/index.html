@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CSSApp Course Control Upload</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>Course Control Student Upload</h1>
+    <p class="muted">Today + future events (Sydney). Upload the full student list for Course Control.</p>
+
+    <div class="card">
+      <label class="lbl">Supabase Events (today + future)</label>
+      <select id="eventSelect"></select>
+      <div class="row">
+        <button id="refreshEvents">Refresh Events</button>
+        <span id="eventStatus" class="muted"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <label class="lbl">CSV File</label>
+      <input id="csvFile" type="file" accept=".csv,text/csv" />
+
+      <div class="row" style="margin-top:14px;">
+        <button id="btnPreview">Preview</button>
+        <button id="btnCommit" class="danger" disabled>Commit Upload (Replaces Course Control list)</button>
+        <span id="status" class="muted"></span>
+      </div>
+    </div>
+
+    <div id="preview" class="card" style="display:none;">
+      <h2>Preview</h2>
+      <div id="summary" class="muted"></div>
+      <ul id="previewList"></ul>
+    </div>
+
+    <div class="footer muted">
+      Required CSV headers: Coach, No., First, Last, Bike, Level, Group
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
