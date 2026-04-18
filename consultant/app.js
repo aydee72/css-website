@@ -1552,11 +1552,24 @@ function openEdit(enrollmentId, rideNo, currentVal) {
 
   state.drillSearch = "";
 
-  syncEditFields();
+    syncEditFields();
   renderDrillList();
 
   state.editOpen = true;
   els.editModal.classList.remove("hidden");
+
+  requestAnimationFrame(() => {
+    els.editModal.scrollTop = 0;
+
+    const modalCard =
+      els.editModal.querySelector(".modal-card") ||
+      els.editModal.querySelector(".modal-content") ||
+      els.editModal.firstElementChild;
+
+    if (modalCard && typeof modalCard.scrollTop === "number") {
+      modalCard.scrollTop = 0;
+    }
+  });
 }
 
 function closeEdit() {
