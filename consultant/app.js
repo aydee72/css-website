@@ -17,6 +17,8 @@ const state = {
   csvPreview: null,
   csvWarnings: [],
   maxRideNo: 5,
+  hiddenStudentIdsByEvent: {},
+  filterModalOpen: false,
   editOpen: false,
   editEnrollmentId: null,
   editRideNo: 1,
@@ -26,12 +28,31 @@ const state = {
   editIsBracketing: false,
   editCustomDescription: "",
   editCoachRecommendation: null,
+  editRecommendationPending: false,
+  editRecommendationConfidence: "",
+  editRecommendationConfidenceDetail: "",
+  editCoachAudioPending: false,
+  editCoachAudioActioned: false,
+  editCoachVideoPending: false,
+  editCoachVideoActioned: false,
+  editCoachAudioPlayed: false,
+  editConsultantAudioUrl: "",
+  isRecording: false,
+  recordedBlob: null,
+  recordedAudioUrl: "",
+  mediaRecorder: null,
   drillSearch: "",
   realtimeChannel: null,
 };
 
 const els = {
   eventSelect: document.getElementById("eventSelect"),
+  filterStudentsBtn: document.getElementById("filterStudentsBtn"),
+  studentFilterModal: document.getElementById("studentFilterModal"),
+  studentFilterList: document.getElementById("studentFilterList"),
+  filterSelectAllBtn: document.getElementById("filterSelectAllBtn"),
+  filterClearAllBtn: document.getElementById("filterClearAllBtn"),
+  filterDoneBtn: document.getElementById("filterDoneBtn"),
   togglePastEventsBtn: document.getElementById("togglePastEventsBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
   board: document.getElementById("board"),
@@ -168,6 +189,13 @@ function escapeHtml(str) {
 /* ===== Coach Recommendation Support ===== */
 
 const COACH_RECOMMENDATION_PREFIX = "[COACH_RECOMMENDATION]";
+const COACH_RECOMMENDATION_ACTIONED_PREFIX = "[COACH_RECOMMENDATION_ACTIONED_AT]";
+const COACH_AUDIO_ACTIONED_FOR_PREFIX = "[COACH_AUDIO_ACTIONED_FOR]";
+const CONSULTANT_AUDIO_URL_PREFIX = "[CONSULTANT_AUDIO_URL]";
+const CONSULTANT_AUDIO_ACTIONED_FOR_PREFIX = "[CONSULTANT_AUDIO_ACTIONED_FOR]";
+const COACH_CONSULTANT_REVIEWED_FOR_PREFIX = "[COACH_CONSULTANT_REVIEWED_FOR]";
+const CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX = "[CONSULTANT_VIDEO_ACTIONED_FOR]";
+const COACH_VIDEO_ACTIONED_FOR_PREFIX = "[COACH_VIDEO_ACTIONED_FOR]";
 
 function cleanText(input) {
   return String(input ?? "").replace(/\r\n/g, "\n").trim();
@@ -180,7 +208,13 @@ function emptyRecommendation() {
     isVideo: false,
     isBracketing: false,
     note: "",
+    confidence: "",
   };
+}
+
+function metadataLineValue(lines, prefix) {
+  const line = lines.find((l) => l.startsWith(prefix));
+  return line ? line.slice(prefix.length).trim() : "";
 }
 
 function parseCoachRecommendation(customDescription) {
@@ -189,34 +223,105 @@ function parseCoachRecommendation(customDescription) {
     .map((l) => l.trim())
     .filter(Boolean);
 
-  const coachLine = lines.find((l) =>
-    l.startsWith(COACH_RECOMMENDATION_PREFIX)
+  const coachLine = lines.find((l) => l.startsWith(COACH_RECOMMENDATION_PREFIX));
+  const actionedLine = lines.find((l) => l.startsWith(COACH_RECOMMENDATION_ACTIONED_PREFIX));
+  const audioActionedLine = lines.find((l) => l.startsWith(COACH_AUDIO_ACTIONED_FOR_PREFIX));
+  const consultantAudioUrlLine = lines.find((l) => l.startsWith(CONSULTANT_AUDIO_URL_PREFIX));
+  const consultantAudioActionedLine = lines.find((l) =>
+    l.startsWith(CONSULTANT_AUDIO_ACTIONED_FOR_PREFIX)
+  );
+  const coachConsultantReviewedLine = lines.find((l) =>
+    l.startsWith(COACH_CONSULTANT_REVIEWED_FOR_PREFIX)
+  );
+  const consultantVideoActionedLine = lines.find((l) =>
+    l.startsWith(CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX)
+  );
+  const coachVideoActionedLine = lines.find((l) =>
+    l.startsWith(COACH_VIDEO_ACTIONED_FOR_PREFIX)
   );
 
   const consultantDescription = lines
-    .filter((l) => !l.startsWith(COACH_RECOMMENDATION_PREFIX))
+    .filter((l) => !l.startsWith("[COACH_") && !l.startsWith("[CONSULTANT_"))
     .join("\n")
     .trim();
 
+  const consultantActionedAtRaw = actionedLine
+    ? actionedLine.slice(COACH_RECOMMENDATION_ACTIONED_PREFIX.length).trim()
+    : "";
+  const consultantActionedAt = consultantActionedAtRaw || null;
+
+  const consultantAudioActionedForRaw = audioActionedLine
+    ? audioActionedLine.slice(COACH_AUDIO_ACTIONED_FOR_PREFIX.length).trim()
+    : "";
+  const consultantAudioActionedFor = consultantAudioActionedForRaw || null;
+
+  const consultantAudioUrlRaw = consultantAudioUrlLine
+    ? consultantAudioUrlLine.slice(CONSULTANT_AUDIO_URL_PREFIX.length).trim()
+    : "";
+  const consultantAudioUrl = consultantAudioUrlRaw || null;
+
+  const coachAudioActionedForRaw = consultantAudioActionedLine
+    ? consultantAudioActionedLine.slice(CONSULTANT_AUDIO_ACTIONED_FOR_PREFIX.length).trim()
+    : "";
+  const coachAudioActionedFor = coachAudioActionedForRaw || null;
+
+  const coachConsultantReviewedForRaw = coachConsultantReviewedLine
+    ? coachConsultantReviewedLine.slice(COACH_CONSULTANT_REVIEWED_FOR_PREFIX.length).trim()
+    : "";
+  const coachConsultantReviewedFor = coachConsultantReviewedForRaw || null;
+
+  const consultantVideoActionedForRaw = consultantVideoActionedLine
+    ? consultantVideoActionedLine.slice(CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX.length).trim()
+    : "";
+  const consultantVideoActionedFor = consultantVideoActionedForRaw || null;
+
+  const coachVideoActionedForRaw = coachVideoActionedLine
+    ? coachVideoActionedLine.slice(COACH_VIDEO_ACTIONED_FOR_PREFIX.length).trim()
+    : "";
+  const coachVideoActionedFor = coachVideoActionedForRaw || null;
+
   if (!coachLine) {
-    return { recommendation: null, consultantDescription };
+    return {
+      recommendation: null,
+      consultantDescription,
+      consultantActionedAt,
+      consultantAudioActionedFor,
+      consultantAudioUrl,
+      coachAudioActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
+      coachVideoActionedFor,
+    };
   }
 
-  const payload = coachLine
-    .slice(COACH_RECOMMENDATION_PREFIX.length)
-    .trim();
+  const payload = coachLine.slice(COACH_RECOMMENDATION_PREFIX.length).trim();
 
   if (!payload) {
-    return { recommendation: null, consultantDescription };
+    return {
+      recommendation: null,
+      consultantDescription,
+      consultantActionedAt,
+      consultantAudioActionedFor,
+      consultantAudioUrl,
+      coachAudioActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
+      coachVideoActionedFor,
+    };
   }
 
   if (!payload.startsWith("{")) {
     const note = cleanText(payload);
     return {
-      recommendation: note
-        ? { ...emptyRecommendation(), note }
-        : null,
+      recommendation: note ? { ...emptyRecommendation(), note } : null,
       consultantDescription,
+      consultantActionedAt,
+      consultantAudioActionedFor,
+      consultantAudioUrl,
+      coachAudioActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
+      coachVideoActionedFor,
     };
   }
 
@@ -229,6 +334,7 @@ function parseCoachRecommendation(customDescription) {
       isVideo: !!parsed?.isVideo,
       isBracketing: !!parsed?.isBracketing,
       note: cleanText(parsed?.note),
+      confidence: cleanText(parsed?.confidence),
     };
 
     const hasAny =
@@ -241,21 +347,40 @@ function parseCoachRecommendation(customDescription) {
     return {
       recommendation: hasAny ? recommendation : null,
       consultantDescription,
+      consultantActionedAt,
+      consultantAudioActionedFor,
+      consultantAudioUrl,
+      coachAudioActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
+      coachVideoActionedFor,
     };
   } catch {
     const note = cleanText(payload);
     return {
-      recommendation: note
-        ? { ...emptyRecommendation(), note }
-        : null,
+      recommendation: note ? { ...emptyRecommendation(), note } : null,
       consultantDescription,
+      consultantActionedAt,
+      consultantAudioActionedFor,
+      consultantAudioUrl,
+      coachAudioActionedFor,
+      coachConsultantReviewedFor,
+      consultantVideoActionedFor,
+      coachVideoActionedFor,
     };
   }
 }
 
 function buildCustomDescriptionWithCoachRecommendation(
   consultantDescription,
-  recommendation
+  recommendation,
+  consultantActionedAt = null,
+  consultantAudioActionedFor = null,
+  consultantAudioUrl = null,
+  coachAudioActionedFor = null,
+  coachConsultantReviewedFor = null,
+  consultantVideoActionedFor = null,
+  coachVideoActionedFor = null
 ) {
   const cleanConsultant = cleanText(consultantDescription);
 
@@ -274,15 +399,107 @@ function buildCustomDescriptionWithCoachRecommendation(
         isVideo: !!recommendation.isVideo,
         isBracketing: !!recommendation.isBracketing,
         note: cleanText(recommendation.note),
+        confidence: cleanText(recommendation.confidence),
       })}`
     : "";
 
-  const out = [cleanConsultant, coachLine]
+  const actionedLine =
+    hasRecommendation && cleanText(consultantActionedAt)
+      ? `${COACH_RECOMMENDATION_ACTIONED_PREFIX} ${cleanText(consultantActionedAt)}`
+      : "";
+
+  const audioActionedLine = cleanText(consultantAudioActionedFor)
+    ? `${COACH_AUDIO_ACTIONED_FOR_PREFIX} ${cleanText(consultantAudioActionedFor)}`
+    : "";
+
+  const consultantAudioUrlLine = cleanText(consultantAudioUrl)
+    ? `${CONSULTANT_AUDIO_URL_PREFIX} ${cleanText(consultantAudioUrl)}`
+    : "";
+
+  const coachAudioActionedLine = cleanText(coachAudioActionedFor)
+    ? `${CONSULTANT_AUDIO_ACTIONED_FOR_PREFIX} ${cleanText(coachAudioActionedFor)}`
+    : "";
+
+  const coachConsultantReviewedLine = cleanText(coachConsultantReviewedFor)
+    ? `${COACH_CONSULTANT_REVIEWED_FOR_PREFIX} ${cleanText(coachConsultantReviewedFor)}`
+    : "";
+
+  const consultantVideoActionedLine = cleanText(consultantVideoActionedFor)
+    ? `${CONSULTANT_VIDEO_ACTIONED_FOR_PREFIX} ${cleanText(consultantVideoActionedFor)}`
+    : "";
+
+  const coachVideoActionedLine = cleanText(coachVideoActionedFor)
+    ? `${COACH_VIDEO_ACTIONED_FOR_PREFIX} ${cleanText(coachVideoActionedFor)}`
+    : "";
+
+  const out = [
+    cleanConsultant,
+    coachLine,
+    actionedLine,
+    audioActionedLine,
+    consultantAudioUrlLine,
+    coachAudioActionedLine,
+    coachConsultantReviewedLine,
+    consultantVideoActionedLine,
+    coachVideoActionedLine,
+  ]
     .filter(Boolean)
     .join("\n")
     .trim();
 
   return out || null;
+}
+
+function consultantReviewSignature(assignment) {
+  if (!assignment) return null;
+  const parsed = parseCoachRecommendation(assignment.custom_description);
+
+  const signatureParts = [
+    norm(assignment.drill_code),
+    norm(assignment.custom_text),
+    norm(assignment.turn_text),
+    assignment.is_video ? "1" : "0",
+    assignment.is_bracketing ? "1" : "0",
+    norm(parsed.consultantDescription),
+    norm(parsed.consultantAudioUrl),
+  ];
+
+  const hasConsultantContent =
+    !!signatureParts[0] ||
+    !!signatureParts[1] ||
+    !!signatureParts[2] ||
+    signatureParts[3] === "1" ||
+    signatureParts[4] === "1" ||
+    !!signatureParts[5] ||
+    !!signatureParts[6];
+
+  if (!hasConsultantContent) return null;
+  return signatureParts.join("|");
+}
+
+function consultantVideoRequestSignature(assignment) {
+  if (!assignment?.is_video) return null;
+  const parsed = parseCoachRecommendation(assignment.custom_description);
+  return [
+    norm(assignment.drill_code),
+    norm(assignment.custom_text),
+    norm(assignment.turn_text),
+    assignment.is_video ? "1" : "0",
+    assignment.is_bracketing ? "1" : "0",
+    norm(parsed.consultantDescription),
+  ].join("|");
+}
+
+function coachRecommendationVideoRequestSignature(recommendation) {
+  if (!recommendation?.isVideo) return null;
+  return [
+    norm(splitDrillValue(recommendation.drill).drill_code),
+    norm(splitDrillValue(recommendation.drill).custom_text),
+    norm(recommendation.turnText),
+    recommendation.isVideo ? "1" : "0",
+    recommendation.isBracketing ? "1" : "0",
+    "",
+  ].join("|");
 }
 
 async function loadEvents() {
@@ -354,11 +571,12 @@ async function loadDrills() {
 }
 
 async function loadRoster() {
-    if (!state.selectedEventId) {
+  if (!state.selectedEventId) {
     state.rows = [];
     state.assignByEnroll = {};
     state.ndByPersonId = {};
     renderBoard();
+    renderStudentFilterList();
     setStatus();
     return;
   }
@@ -373,6 +591,7 @@ async function loadRoster() {
             .select(`
         id,
         coach,
+        group,
         bike_no,
         person_id,
         event:events(id,event_date),
@@ -385,7 +604,7 @@ async function loadRoster() {
 
     if (error) throw error;
 
-    state.rows = data ?? [];
+    state.rows = (data ?? []).slice().sort(compareEnrollmentRows);
 
     const map = {};
     for (const r of state.rows) {
@@ -399,7 +618,9 @@ async function loadRoster() {
       map[r.id] = perRide;
     }
 
-        state.assignByEnroll = map;
+    state.assignByEnroll = map;
+    ensureHiddenStudentIdsForEvent();
+    renderStudentFilterList();
     await loadPreviousNdFallbacks();
   } catch (e) {
     state.err = String(e?.message ?? e ?? "Failed to load roster");
@@ -490,14 +711,131 @@ async function loadPreviousNdFallbacks() {
 
 function groupedRows() {
   const map = new Map();
+  const orderedRows = state.rows.slice().sort(compareEnrollmentRows);
+  const visibleRows = getVisibleRows(orderedRows);
 
-  for (const r of state.rows) {
+  for (const r of visibleRows) {
     const key = (r.coach ?? "Unassigned").trim() || "Unassigned";
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(r);
   }
 
-  return Array.from(map.entries());
+  const groups = Array.from(map.entries()).sort(([coachA], [coachB]) =>
+    compareText(coachA, coachB)
+  );
+
+  return groups.map(([coach, list]) => [coach, list]);
+}
+
+const GROUP_ORDER = { W: 0, Y: 1, G: 2 };
+const GROUP_THEME = {
+  W: { className: "student-group-w", label: "W" },
+  Y: { className: "student-group-y", label: "Y" },
+  G: { className: "student-group-g", label: "G" },
+};
+const DEFAULT_GROUP_THEME = { className: "student-group-default", label: "—" };
+
+function compareText(a, b) {
+  return String(a ?? "").localeCompare(String(b ?? ""), undefined, {
+    sensitivity: "base",
+    numeric: true,
+  });
+}
+
+function bikeSortValue(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return { isNumeric: false, numeric: Number.POSITIVE_INFINITY, text: "" };
+  if (/^\d+$/.test(raw)) {
+    return { isNumeric: true, numeric: Number(raw), text: raw };
+  }
+  return { isNumeric: false, numeric: Number.POSITIVE_INFINITY, text: raw };
+}
+
+function normalizeStudentGroup(value) {
+  const g = String(value ?? "").trim().toUpperCase();
+  return GROUP_ORDER[g] === undefined ? "" : g;
+}
+
+function compareEnrollmentRows(a, b) {
+  const groupA = normalizeStudentGroup(a.group);
+  const groupB = normalizeStudentGroup(b.group);
+  const rankA = GROUP_ORDER[groupA] ?? Number.POSITIVE_INFINITY;
+  const rankB = GROUP_ORDER[groupB] ?? Number.POSITIVE_INFINITY;
+  if (rankA !== rankB) return rankA - rankB;
+
+  const bikeA = bikeSortValue(a.bike_no);
+  const bikeB = bikeSortValue(b.bike_no);
+
+  if (bikeA.isNumeric && bikeB.isNumeric && bikeA.numeric !== bikeB.numeric) {
+    return bikeA.numeric - bikeB.numeric;
+  }
+  if (bikeA.isNumeric !== bikeB.isNumeric) {
+    return bikeA.isNumeric ? -1 : 1;
+  }
+
+  const bikeTextCmp = compareText(bikeA.text, bikeB.text);
+  if (bikeTextCmp !== 0) return bikeTextCmp;
+
+  const coachCmp = compareText(a.coach ?? "Unassigned", b.coach ?? "Unassigned");
+  if (coachCmp !== 0) return coachCmp;
+
+  return compareText(a.person?.full_name ?? "", b.person?.full_name ?? "");
+}
+
+function studentFilterStorageKey(eventId) {
+  return `consultant.hiddenStudents.${eventId}`;
+}
+
+function readHiddenStudentIds(eventId) {
+  if (!eventId) return new Set();
+  try {
+    const raw = window.localStorage.getItem(studentFilterStorageKey(eventId));
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter(Boolean).map((v) => String(v)));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeHiddenStudentIds(eventId) {
+  if (!eventId) return;
+  const set = state.hiddenStudentIdsByEvent[eventId] ?? new Set();
+  window.localStorage.setItem(studentFilterStorageKey(eventId), JSON.stringify(Array.from(set)));
+}
+
+function ensureHiddenStudentIdsForEvent() {
+  const eventId = state.selectedEventId;
+  if (!eventId) return;
+  if (!state.hiddenStudentIdsByEvent[eventId]) {
+    state.hiddenStudentIdsByEvent[eventId] = readHiddenStudentIds(eventId);
+  }
+
+  const validIds = new Set(
+    state.rows
+      .map((r) => String(r.person?.id ?? r.person_id ?? ""))
+      .filter(Boolean)
+  );
+
+  const next = new Set();
+  for (const id of state.hiddenStudentIdsByEvent[eventId]) {
+    if (validIds.has(id)) next.add(id);
+  }
+  state.hiddenStudentIdsByEvent[eventId] = next;
+  writeHiddenStudentIds(eventId);
+}
+
+function getVisibleRows(rows) {
+  const eventId = state.selectedEventId;
+  if (!eventId) return rows;
+  const hiddenSet = state.hiddenStudentIdsByEvent[eventId] ?? new Set();
+  if (!hiddenSet.size) return rows;
+
+  return rows.filter((r) => {
+    const personId = String(r.person?.id ?? r.person_id ?? "");
+    return personId && !hiddenSet.has(personId);
+  });
 }
 
 function getRideDisplay(enrollment, rideNo) {
@@ -525,14 +863,69 @@ function getRideDisplay(enrollment, rideNo) {
 function hasRideRecommendation(enrollmentId, rideNo) {
   const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
   if (!assignment) return false;
-
   const parsed = parseCoachRecommendation(assignment?.custom_description);
   return !!parsed.recommendation;
 }
 
+function hasRideRecommendationPending(enrollmentId, rideNo) {
+  const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
+  const parsed = parseCoachRecommendation(assignment?.custom_description);
+  return !!parsed.recommendation && !parsed.consultantActionedAt;
+}
+
 function hasRideAudio(enrollmentId, rideNo) {
   const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
-  return !!assignment?.coach_audio_url;
+  if (!assignment?.coach_audio_url) return false;
+  const parsed = parseCoachRecommendation(assignment.custom_description);
+  return parsed.consultantAudioActionedFor !== assignment.coach_audio_url;
+}
+
+function hasRideVideoPending(enrollmentId, rideNo) {
+  const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
+  const parsed = parseCoachRecommendation(assignment?.custom_description);
+  const signature = coachRecommendationVideoRequestSignature(parsed.recommendation);
+  if (!signature) return false;
+  return parsed.consultantVideoActionedFor !== signature;
+}
+
+function hasPendingConsultantAudio(assignment) {
+  if (!assignment) return false;
+  const parsed = parseCoachRecommendation(assignment.custom_description);
+  if (!parsed.consultantAudioUrl) return false;
+  return parsed.coachAudioActionedFor !== parsed.consultantAudioUrl;
+}
+
+function hasPendingConsultantVideo(assignment) {
+  if (!assignment?.is_video) return false;
+  const parsed = parseCoachRecommendation(assignment.custom_description);
+  const signature = consultantVideoRequestSignature(assignment);
+  if (!signature) return false;
+  return parsed.coachVideoActionedFor !== signature;
+}
+
+function hasPendingConsultantUpdate(assignment) {
+  if (!assignment) return false;
+  const parsed = parseCoachRecommendation(assignment.custom_description);
+  if (!parsed.recommendation) return false;
+
+  const signature = consultantReviewSignature(assignment);
+  if (!signature) return false;
+
+  const recommendedSplit = splitDrillValue(parsed.recommendation.drill);
+  const recommendationSignature = [
+    norm(recommendedSplit.drill_code),
+    norm(recommendedSplit.custom_text),
+    norm(parsed.recommendation.turnText),
+    parsed.recommendation.isVideo ? "1" : "0",
+    parsed.recommendation.isBracketing ? "1" : "0",
+    "",
+    "",
+  ].join("|");
+
+  const isConsultantSavedState = signature !== recommendationSignature;
+  if (!isConsultantSavedState) return false;
+
+  return parsed.coachConsultantReviewedFor !== signature;
 }
 
 async function resolveCoachAudioPlaybackUrl(storedValue) {
@@ -543,6 +936,19 @@ async function resolveCoachAudioPlaybackUrl(storedValue) {
   const { data, error } = await supabaseClient.storage
     .from("coach-audio")
     .createSignedUrl(value, 60 * 60 * 8) // 8 hours
+
+  if (error) throw error;
+  return data?.signedUrl ?? "";
+}
+
+async function resolveConsultantAudioPlaybackUrl(storedValue) {
+  const value = String(storedValue ?? "").trim();
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return value;
+
+  const { data, error } = await supabaseClient.storage
+    .from("coach-audio")
+    .createSignedUrl(value, 60 * 60 * 8);
 
   if (error) throw error;
   return data?.signedUrl ?? "";
@@ -565,24 +971,29 @@ function renderBoard() {
     .map(([coach, list]) => {
       const rowsHtml = list
         .map((r) => {
+          const studentGroup = normalizeStudentGroup(r.group);
+          const theme = GROUP_THEME[studentGroup] ?? DEFAULT_GROUP_THEME;
           const rideCells = [...Array.from({ length: state.maxRideNo }, (_, i) => i + 1), 0]
   .map((rideNo) => {
               const val = getRideDisplay(r, rideNo);
 const isEmpty = !norm(val);
 
 const hasRecommendation = hasRideRecommendation(r.id, rideNo);
+const hasRecommendationPending = hasRideRecommendationPending(r.id, rideNo);
 const hasAudio = hasRideAudio(r.id, rideNo);
+const hasVideoPending = hasRideVideoPending(r.id, rideNo);
 
 const displayText = val || (hasRecommendation ? "REC" : "—");
 
 const icons = `
   ${hasRecommendation ? `<span class="cell-icon rec">⭐</span>` : ""}
   ${hasAudio ? `<span class="cell-icon audio">🔊</span>` : ""}
+  ${hasVideoPending ? `<span class="cell-icon video">📹</span>` : ""}
 `;
 
 return `
   <button
-    class="cell ${isEmpty ? "" : "cell-on"} ${hasRecommendation ? "cell-rec" : ""}"
+    class="cell ${isEmpty ? "" : "cell-on"} ${hasRecommendationPending ? "cell-rec" : ""}"
                   type="button"
                   data-enrollment-id="${escapeHtml(r.id)}"
                   data-ride-no="${rideNo}"
@@ -596,10 +1007,13 @@ return `
             .join("");
 
           return `
-            <div class="row">
+            <div class="row ${theme.className}">
               <div class="bike">${escapeHtml(r.bike_no ?? "-")}</div>
               <div class="row-main">
-                <div class="name">${escapeHtml(r.person?.full_name ?? "(missing person)")}</div>
+                <div class="name">
+                  ${escapeHtml(r.person?.full_name ?? "(missing person)")}
+                  <span class="group-pill">${escapeHtml(theme.label)}</span>
+                </div>
                 <div class="ride-row">${rideCells}</div>
                 ${
                   r.person?.last_drill_text
@@ -632,6 +1046,99 @@ return `
       openEdit(enrollmentId, rideNo, currentVal);
     });
   });
+}
+
+function filterStudentsSortedRows() {
+  return state.rows.slice().sort(compareEnrollmentRows);
+}
+
+function isStudentVisible(personId) {
+  const eventId = state.selectedEventId;
+  if (!eventId) return true;
+  const hiddenSet = state.hiddenStudentIdsByEvent[eventId] ?? new Set();
+  return !hiddenSet.has(String(personId));
+}
+
+function renderStudentFilterList() {
+  if (!els.studentFilterList) return;
+
+  if (!state.selectedEventId) {
+    els.studentFilterList.innerHTML = `<div class="muted">Select an event first.</div>`;
+    return;
+  }
+
+  const rows = filterStudentsSortedRows();
+  if (!rows.length) {
+    els.studentFilterList.innerHTML = `<div class="muted">No students available for this event.</div>`;
+    return;
+  }
+
+  els.studentFilterList.innerHTML = rows
+    .map((row) => {
+      const personId = String(row.person?.id ?? row.person_id ?? "");
+      const checked = isStudentVisible(personId) ? "checked" : "";
+      const name = row.person?.full_name ?? "(missing person)";
+      const coach = (row.coach ?? "Unassigned").trim() || "Unassigned";
+
+      return `
+        <label class="student-filter-item">
+          <input type="checkbox" data-person-id="${escapeHtml(personId)}" ${checked} />
+          <span>${escapeHtml(name)}</span>
+          <span class="student-filter-meta">${escapeHtml(`${coach} · Bike ${row.bike_no ?? "-"}`)}</span>
+        </label>
+      `;
+    })
+    .join("");
+
+  els.studentFilterList.querySelectorAll("input[type='checkbox']").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const eventId = state.selectedEventId;
+      if (!eventId) return;
+      ensureHiddenStudentIdsForEvent();
+      const hiddenSet = state.hiddenStudentIdsByEvent[eventId];
+      const personId = cb.getAttribute("data-person-id") || "";
+
+      if (cb.checked) {
+        hiddenSet.delete(personId);
+      } else {
+        hiddenSet.add(personId);
+      }
+
+      writeHiddenStudentIds(eventId);
+      renderBoard();
+    });
+  });
+}
+
+function setAllStudentsVisible(visible) {
+  const eventId = state.selectedEventId;
+  if (!eventId) return;
+  ensureHiddenStudentIdsForEvent();
+
+  if (visible) {
+    state.hiddenStudentIdsByEvent[eventId] = new Set();
+  } else {
+    state.hiddenStudentIdsByEvent[eventId] = new Set(
+      state.rows
+        .map((r) => String(r.person?.id ?? r.person_id ?? ""))
+        .filter(Boolean)
+    );
+  }
+
+  writeHiddenStudentIds(eventId);
+  renderStudentFilterList();
+  renderBoard();
+}
+
+function openStudentFilterModal() {
+  state.filterModalOpen = true;
+  renderStudentFilterList();
+  els.studentFilterModal.classList.remove("hidden");
+}
+
+function closeStudentFilterModal() {
+  state.filterModalOpen = false;
+  els.studentFilterModal.classList.add("hidden");
 }
 
 function filteredDrills() {
@@ -732,14 +1239,20 @@ function syncToggleButtons() {
 function renderCoachRecommendation() {
   const box = document.getElementById("coachRecommendationBox");
   const content = document.getElementById("coachRecommendationContent");
+  const confidence = document.getElementById("coachRecommendationConfidence");
+  const confidenceDetail = document.getElementById("coachRecommendationConfidenceDetail");
 
-  if (!box || !content) return;
+  if (!box || !content || !confidence || !confidenceDetail) return;
 
   const rec = state.editCoachRecommendation;
 
   if (!rec) {
     box.classList.add("hidden");
     content.innerHTML = "";
+    confidence.textContent = "";
+    confidence.classList.add("hidden");
+    confidenceDetail.textContent = "";
+    confidenceDetail.classList.add("hidden");
     return;
   }
 
@@ -762,25 +1275,48 @@ function renderCoachRecommendation() {
   }
 
   content.innerHTML = lines.join("");
+  if (state.editRecommendationConfidence) {
+    confidence.textContent = `Confidence: ${state.editRecommendationConfidence}`;
+    confidence.classList.remove("hidden");
+  } else {
+    confidence.textContent = "";
+    confidence.classList.add("hidden");
+  }
+
+  if (state.editRecommendationConfidenceDetail) {
+    confidenceDetail.textContent = state.editRecommendationConfidenceDetail;
+    confidenceDetail.classList.remove("hidden");
+  } else {
+    confidenceDetail.textContent = "";
+    confidenceDetail.classList.add("hidden");
+  }
   box.classList.remove("hidden");
 }
 
 async function renderCoachAudio() {
   const box = document.getElementById("coachAudioBox");
   const player = document.getElementById("coachAudioPlayer");
+  const videoRow = document.getElementById("coachVideoReviewedRow");
+  const videoCheck = document.getElementById("coachVideoReviewed");
 
-  if (!box || !player || !state.editEnrollmentId) return;
+  if (!box || !player || !videoRow || !videoCheck || !state.editEnrollmentId) return;
 
   const enrollmentId = state.editEnrollmentId;
   const rideNo = state.editRideNo;
   const assignment = state.assignByEnroll[enrollmentId]?.[rideNo];
   const audioUrl = assignment?.coach_audio_url || "";
+  const hasVideoPending =
+    !!state.editCoachVideoPending || !!state.editCoachVideoActioned;
+  videoCheck.checked = !!state.editCoachVideoActioned;
+  const videoText = videoRow.querySelector("span");
+  if (videoText) videoText.textContent = "Camera actioned";
+  videoRow.classList.toggle("hidden", !hasVideoPending);
 
   if (!audioUrl) {
     player.pause();
     player.removeAttribute("src");
     player.load();
-    box.classList.add("hidden");
+    box.classList.toggle("hidden", !hasVideoPending);
     return;
   }
 
@@ -804,11 +1340,177 @@ async function renderCoachAudio() {
     player.pause();
     player.removeAttribute("src");
     player.load();
+    box.classList.toggle("hidden", !hasVideoPending);
+  }
+}
+
+async function renderConsultantAudio() {
+  const box = document.getElementById("consultantAudioBox");
+  const player = document.getElementById("consultantAudioPlayer");
+  if (!box || !player) return;
+
+  if (!state.editConsultantAudioUrl) {
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+    box.classList.add("hidden");
+    return;
+  }
+
+  try {
+    const playbackUrl = await resolveConsultantAudioPlaybackUrl(state.editConsultantAudioUrl);
+    if (!playbackUrl) throw new Error("Missing consultant playback url");
+    player.pause();
+    player.src = playbackUrl;
+    player.load();
+    box.classList.remove("hidden");
+  } catch (e) {
+    console.error("Failed to resolve consultant audio URL:", e);
     box.classList.add("hidden");
   }
 }
 
+async function uploadConsultantAudio(file) {
+  const ext = (file.name.split(".").pop() || "webm").toLowerCase();
+  const key = `${state.editEnrollmentId}/${state.editRideNo}/${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}.${ext}`;
+
+  const { error } = await supabaseClient.storage
+    .from("coach-audio")
+    .upload(key, file, { upsert: true, contentType: file.type || "audio/webm" });
+
+  if (error) throw error;
+  state.editConsultantAudioUrl = key;
+  await renderConsultantAudio();
+}
+
+function syncConsultantRecordingUI() {
+  const recordBtn = document.getElementById("consultantRecordBtn");
+  const stopBtn = document.getElementById("consultantStopBtn");
+  const playBtn = document.getElementById("consultantPlayBtn");
+  const uploadBtn = document.getElementById("consultantUploadBtn");
+  const clearBtn = document.getElementById("consultantClearBtn");
+  const previewBox = document.getElementById("consultantAudioPreviewBox");
+  const previewPlayer = document.getElementById("consultantAudioPreviewPlayer");
+
+  if (
+    !recordBtn ||
+    !stopBtn ||
+    !playBtn ||
+    !uploadBtn ||
+    !clearBtn ||
+    !previewBox ||
+    !previewPlayer
+  ) {
+    return;
+  }
+
+  recordBtn.disabled = state.isRecording;
+  stopBtn.disabled = !state.isRecording;
+
+  const hasRecording = !!state.recordedBlob && !!state.recordedAudioUrl;
+  playBtn.disabled = !hasRecording;
+  uploadBtn.disabled = !hasRecording || !state.editEnrollmentId;
+  clearBtn.disabled = !hasRecording;
+  previewBox.classList.toggle("hidden", !hasRecording);
+}
+
+function clearRecordedAudioState() {
+  const previewPlayer = document.getElementById("consultantAudioPreviewPlayer");
+
+  if (previewPlayer) {
+    previewPlayer.pause();
+    previewPlayer.removeAttribute("src");
+    previewPlayer.load();
+  }
+
+  if (state.recordedAudioUrl) {
+    URL.revokeObjectURL(state.recordedAudioUrl);
+  }
+
+  state.recordedBlob = null;
+  state.recordedAudioUrl = "";
+}
+
+async function startConsultantRecording() {
+  if (state.isRecording) return;
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const recordedChunks = [];
+
+  const recorder = new MediaRecorder(stream);
+  state.mediaRecorder = recorder;
+  state.isRecording = true;
+  clearRecordedAudioState();
+  syncConsultantRecordingUI();
+
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data && event.data.size > 0) {
+      recordedChunks.push(event.data);
+    }
+  });
+
+  recorder.addEventListener("stop", () => {
+    stream.getTracks().forEach((track) => track.stop());
+
+    if (!state.editOpen) {
+      state.mediaRecorder = null;
+      state.isRecording = false;
+      syncConsultantRecordingUI();
+      return;
+    }
+
+    const type = recorder.mimeType || "audio/webm";
+    const blob = new Blob(recordedChunks, { type });
+    state.recordedBlob = blob;
+    state.recordedAudioUrl = URL.createObjectURL(blob);
+
+    const previewPlayer = document.getElementById("consultantAudioPreviewPlayer");
+    if (previewPlayer) {
+      previewPlayer.pause();
+      previewPlayer.src = state.recordedAudioUrl;
+      previewPlayer.load();
+    }
+
+    state.mediaRecorder = null;
+    state.isRecording = false;
+    syncConsultantRecordingUI();
+  });
+
+  recorder.addEventListener("error", () => {
+    stream.getTracks().forEach((track) => track.stop());
+    state.mediaRecorder = null;
+    state.isRecording = false;
+    syncConsultantRecordingUI();
+  });
+
+  recorder.start();
+}
+
+function stopConsultantRecording() {
+  if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
+    state.mediaRecorder.stop();
+  }
+}
+
+async function uploadRecordedConsultantAudio() {
+  if (!state.recordedBlob || !state.editEnrollmentId) return;
+
+  const mimeType = state.recordedBlob.type || "audio/webm";
+  const ext = mimeType.includes("mp4") ? "m4a" : "webm";
+  const file = new File([state.recordedBlob], `consultant-recording-${Date.now()}.${ext}`, {
+    type: mimeType,
+  });
+
+  await uploadConsultantAudio(file);
+  clearRecordedAudioState();
+  syncConsultantRecordingUI();
+}
+
 function syncEditFields() {
+  const parsedEditDescription = parseCoachRecommendation(state.editCustomDescription);
+  state.editCustomDescription = parsedEditDescription.consultantDescription;
   els.editValue.value = state.editValue;
   els.editTurnText.value = state.editTurnText;
   els.editCustomDescription.value = state.editCustomDescription;
@@ -817,6 +1519,8 @@ function syncEditFields() {
   syncToggleButtons();
   renderCoachRecommendation();
   renderCoachAudio();
+  renderConsultantAudio();
+  syncConsultantRecordingUI();
 }
 
 function openEdit(enrollmentId, rideNo, currentVal) {
@@ -825,23 +1529,47 @@ function openEdit(enrollmentId, rideNo, currentVal) {
   state.editValue = currentVal ?? "";
 
   const existing = state.assignByEnroll[enrollmentId]?.[rideNo];
+  const parsed = parseCoachRecommendation(existing?.custom_description);
 
-const parsed = parseCoachRecommendation(existing?.custom_description);
+  state.editTurnText = existing?.turn_text ?? "";
+  state.editIsVideo = !!existing?.is_video;
+  state.editIsBracketing = !!existing?.is_bracketing;
+  state.editCustomDescription = parsed.consultantDescription;
+  state.editCoachRecommendation = parsed.recommendation;
+  state.editRecommendationPending = !!parsed.recommendation && !parsed.consultantActionedAt;
+  state.editRecommendationConfidence = parsed.recommendation?.confidence || "";
+  state.editRecommendationConfidenceDetail = "";
+  state.editCoachAudioPending = !!existing?.coach_audio_url && parsed.consultantAudioActionedFor !== existing.coach_audio_url;
+  state.editCoachAudioActioned = !!existing?.coach_audio_url && parsed.consultantAudioActionedFor === existing.coach_audio_url;
+  const coachVideoSignature = coachRecommendationVideoRequestSignature(parsed.recommendation);
+  state.editCoachVideoPending = !!coachVideoSignature && parsed.consultantVideoActionedFor !== coachVideoSignature;
+  state.editCoachVideoActioned = !!coachVideoSignature && parsed.consultantVideoActionedFor === coachVideoSignature;
+  state.editCoachAudioPlayed = false;
+  state.editConsultantAudioUrl = parsed.consultantAudioUrl || "";
+  state.isRecording = false;
+  clearRecordedAudioState();
+  state.mediaRecorder = null;
 
-state.editTurnText = existing?.turn_text ?? "";
-state.editIsVideo = !!existing?.is_video;
-state.editIsBracketing = !!existing?.is_bracketing;
+  state.drillSearch = "";
 
-state.editCustomDescription = parsed.consultantDescription;
-state.editCoachRecommendation = parsed.recommendation;
-
-state.drillSearch = "";
-
-  syncEditFields();
+    syncEditFields();
   renderDrillList();
 
   state.editOpen = true;
   els.editModal.classList.remove("hidden");
+
+  requestAnimationFrame(() => {
+    els.editModal.scrollTop = 0;
+
+    const modalCard =
+      els.editModal.querySelector(".modal-card") ||
+      els.editModal.querySelector(".modal-content") ||
+      els.editModal.firstElementChild;
+
+    if (modalCard && typeof modalCard.scrollTop === "number") {
+      modalCard.scrollTop = 0;
+    }
+  });
 }
 
 function closeEdit() {
@@ -854,6 +1582,21 @@ function closeEdit() {
   state.drillSearch = "";
   state.editCustomDescription = "";
   state.editCoachRecommendation = null;
+  state.editRecommendationPending = false;
+  state.editRecommendationConfidence = "";
+  state.editRecommendationConfidenceDetail = "";
+  state.editCoachAudioPending = false;
+  state.editCoachAudioActioned = false;
+  state.editCoachVideoPending = false;
+  state.editCoachVideoActioned = false;
+  state.editCoachAudioPlayed = false;
+  state.editConsultantAudioUrl = "";
+  state.isRecording = false;
+  if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
+    state.mediaRecorder.stop();
+  }
+  state.mediaRecorder = null;
+  clearRecordedAudioState();
 
   const player = document.getElementById("coachAudioPlayer");
   if (player) {
@@ -872,29 +1615,80 @@ async function upsertAssignment(
   turnText,
   isVideo,
   isBracketing,
-  customDescription
+  customDescription,
+  consultantActionedAt,
+  consultantAudioActionedFor = undefined,
+  consultantAudioUrl = undefined,
+  coachAudioActionedFor = undefined,
+  consultantVideoActionedFor = undefined
 ) {
   const v = norm(value);
 
-  const existing = state.assignByEnroll[enrollmentId]?.[rideNo] ?? null;
-const parsedExisting = parseCoachRecommendation(existing?.custom_description);
-
-const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
-  norm(customDescription) || null,
-  parsedExisting.recommendation
-);
-
   const enrollment = state.rows.find((r) => r.id === enrollmentId);
   const personId = enrollment?.person?.id ?? null;
+  const existing = state.assignByEnroll[enrollmentId]?.[rideNo] ?? null;
+  const parsedExisting = parseCoachRecommendation(existing?.custom_description);
 
-    if (!v) {
-    const { error } = await supabaseClient
-      .from("assignments")
-      .delete()
-      .eq("enrollment_id", enrollmentId)
-      .eq("ride_no", rideNo);
+  const nextConsultantAudioActionedFor =
+    consultantAudioActionedFor === undefined
+      ? parsedExisting.consultantAudioActionedFor
+      : consultantAudioActionedFor;
 
-    if (error) throw error;
+  const nextConsultantAudioUrl =
+    consultantAudioUrl === undefined
+      ? parsedExisting.consultantAudioUrl
+      : consultantAudioUrl;
+
+  const nextCoachAudioActionedFor =
+    coachAudioActionedFor === undefined
+      ? parsedExisting.coachAudioActionedFor
+      : coachAudioActionedFor;
+
+  const nextCoachConsultantReviewedFor = parsedExisting.coachConsultantReviewedFor;
+
+  const nextConsultantVideoActionedFor =
+    consultantVideoActionedFor === undefined
+      ? parsedExisting.consultantVideoActionedFor
+      : consultantVideoActionedFor;
+
+  const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
+    norm(customDescription) || null,
+    parsedExisting.recommendation,
+    parsedExisting.recommendation ? consultantActionedAt : null,
+    nextConsultantAudioActionedFor,
+    nextConsultantAudioUrl,
+    nextCoachAudioActionedFor,
+    nextCoachConsultantReviewedFor,
+    nextConsultantVideoActionedFor,
+    parsedExisting.coachVideoActionedFor
+  );
+
+  if (!v) {
+    if (parsedExisting.recommendation) {
+      const { error } = await supabaseClient.from("assignments").upsert(
+        {
+          enrollment_id: enrollmentId,
+          ride_no: rideNo,
+          drill_code: null,
+          turn_text: null,
+          is_video: false,
+          is_bracketing: false,
+          custom_text: null,
+          custom_description: mergedCustomDescription,
+        },
+        { onConflict: "enrollment_id,ride_no" }
+      );
+
+      if (error) throw error;
+    } else {
+      const { error } = await supabaseClient
+        .from("assignments")
+        .delete()
+        .eq("enrollment_id", enrollmentId)
+        .eq("ride_no", rideNo);
+
+      if (error) throw error;
+    }
   } else {
     const s = splitDrillValue(v);
 
@@ -914,19 +1708,19 @@ const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
       if (drillRow?.code) {
         drill_code = s.drill_code;
         custom_text = null;
-        custom_description = null;
+        custom_description = mergedCustomDescription;
       } else {
         drill_code = null;
         custom_text = v;
-        custom_description = norm(customDescription) || null;
+        custom_description = mergedCustomDescription;
       }
     } else {
       drill_code = null;
       custom_text = s.custom_text;
-      custom_description = norm(customDescription) || null;
+      custom_description = mergedCustomDescription;
     }
 
-        const { error } = await supabaseClient.from("assignments").upsert(
+    const { error } = await supabaseClient.from("assignments").upsert(
       {
         enrollment_id: enrollmentId,
         ride_no: rideNo,
@@ -935,7 +1729,7 @@ const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
         is_video: !!isVideo,
         is_bracketing: !!isBracketing,
         custom_text,
-        custom_description: mergedCustomDescription,
+        custom_description,
       },
       { onConflict: "enrollment_id,ride_no" }
     );
@@ -944,9 +1738,9 @@ const mergedCustomDescription = buildCustomDescriptionWithCoachRecommendation(
   }
 
   if (personId) {
-        const { data: updatedAssignments, error: readErr } = await supabaseClient
+    const { data: updatedAssignments, error: readErr } = await supabaseClient
       .from("assignments")
-            .select("id,enrollment_id,ride_no,drill_code,turn_text,is_video,is_bracketing,custom_text,custom_description,coach_audio_url")
+      .select("id,enrollment_id,ride_no,drill_code,turn_text,is_video,is_bracketing,custom_text,custom_description,coach_audio_url")
       .eq("enrollment_id", enrollmentId)
       .order("ride_no", { ascending: true });
 
@@ -967,6 +1761,28 @@ async function handleSaveEdit() {
   if (!state.editEnrollmentId) return;
 
   try {
+    const currentAssignment = state.assignByEnroll[state.editEnrollmentId]?.[state.editRideNo];
+    const parsedCurrent = parseCoachRecommendation(currentAssignment?.custom_description);
+
+    const consultantAudioActionedFor =
+      state.editCoachAudioPlayed && currentAssignment?.coach_audio_url
+        ? currentAssignment.coach_audio_url
+        : undefined;
+
+    const coachVideoRequestSignature = coachRecommendationVideoRequestSignature(
+      parsedCurrent.recommendation
+    );
+
+    const consultantVideoActionedFor =
+      state.editCoachVideoActioned && coachVideoRequestSignature
+        ? coachVideoRequestSignature
+        : undefined;
+
+    const coachAudioActionedFor =
+      state.editConsultantAudioUrl && parsedCurrent.coachAudioActionedFor === state.editConsultantAudioUrl
+        ? parsedCurrent.coachAudioActionedFor
+        : null;
+
     await upsertAssignment(
       state.editEnrollmentId,
       state.editRideNo,
@@ -974,7 +1790,12 @@ async function handleSaveEdit() {
       state.editTurnText,
       state.editIsVideo,
       state.editIsBracketing,
-      state.editCustomDescription
+      state.editCustomDescription,
+      new Date().toISOString(),
+      consultantAudioActionedFor,
+      state.editConsultantAudioUrl || undefined,
+      coachAudioActionedFor,
+      consultantVideoActionedFor
     );
 
     closeEdit();
@@ -1061,6 +1882,28 @@ function wireEvents() {
     await loadRoster();
   });
 
+  els.filterStudentsBtn.addEventListener("click", () => {
+    openStudentFilterModal();
+  });
+
+  els.filterSelectAllBtn.addEventListener("click", () => {
+    setAllStudentsVisible(true);
+  });
+
+  els.filterClearAllBtn.addEventListener("click", () => {
+    setAllStudentsVisible(false);
+  });
+
+  els.filterDoneBtn.addEventListener("click", () => {
+    closeStudentFilterModal();
+  });
+
+  els.studentFilterModal.addEventListener("click", (e) => {
+    if (e.target === els.studentFilterModal) {
+      closeStudentFilterModal();
+    }
+  });
+
   els.csvFileInput.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1086,9 +1929,93 @@ function wireEvents() {
     syncToggleButtons();
   });
 
-    els.editCustomDescription.addEventListener("input", (e) => {
+  els.editCustomDescription.addEventListener("input", (e) => {
     state.editCustomDescription = e.target.value;
   });
+
+  const coachAudioPlayer = document.getElementById("coachAudioPlayer");
+  if (coachAudioPlayer) {
+    coachAudioPlayer.addEventListener("play", () => {
+      state.editCoachAudioPlayed = true;
+    });
+  }
+
+  const coachVideoReviewed = document.getElementById("coachVideoReviewed");
+  if (coachVideoReviewed) {
+    coachVideoReviewed.addEventListener("change", (e) => {
+      state.editCoachVideoActioned = !!e.target.checked;
+    });
+  }
+
+  const consultantAudioUpload = document.getElementById("consultantAudioUpload");
+  if (consultantAudioUpload) {
+    consultantAudioUpload.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file || !state.editEnrollmentId) return;
+      try {
+        await uploadConsultantAudio(file);
+      } catch (err) {
+        window.alert(`Consultant audio upload failed: ${String(err?.message ?? err ?? "Unknown")}`);
+      } finally {
+        e.target.value = "";
+      }
+    });
+  }
+
+  const consultantRecordBtn = document.getElementById("consultantRecordBtn");
+  if (consultantRecordBtn) {
+    consultantRecordBtn.addEventListener("click", async () => {
+      try {
+        await startConsultantRecording();
+      } catch (err) {
+        state.isRecording = false;
+        state.mediaRecorder = null;
+        syncConsultantRecordingUI();
+        window.alert(`Microphone access failed: ${String(err?.message ?? err ?? "Unknown")}`);
+      }
+    });
+  }
+
+  const consultantStopBtn = document.getElementById("consultantStopBtn");
+  if (consultantStopBtn) {
+    consultantStopBtn.addEventListener("click", () => {
+      stopConsultantRecording();
+    });
+  }
+
+  const consultantPlayBtn = document.getElementById("consultantPlayBtn");
+  if (consultantPlayBtn) {
+    consultantPlayBtn.addEventListener("click", async () => {
+      const previewPlayer = document.getElementById("consultantAudioPreviewPlayer");
+      if (!previewPlayer || !state.recordedAudioUrl) return;
+      try {
+        await previewPlayer.play();
+      } catch (err) {
+        window.alert(`Playback failed: ${String(err?.message ?? err ?? "Unknown")}`);
+      }
+    });
+  }
+
+  const consultantUploadBtn = document.getElementById("consultantUploadBtn");
+  if (consultantUploadBtn) {
+    consultantUploadBtn.addEventListener("click", async () => {
+      try {
+        await uploadRecordedConsultantAudio();
+      } catch (err) {
+        window.alert(
+          `Consultant audio upload failed: ${String(err?.message ?? err ?? "Unknown")}`
+        );
+      }
+    });
+  }
+
+  const consultantClearBtn = document.getElementById("consultantClearBtn");
+  if (consultantClearBtn) {
+    consultantClearBtn.addEventListener("click", () => {
+      clearRecordedAudioState();
+      syncConsultantRecordingUI();
+    });
+  }
 
   els.drillSearch.addEventListener("input", (e) => {
     state.drillSearch = e.target.value;
@@ -1123,6 +2050,7 @@ function wireEvents() {
 
 async function init() {
   wireEvents();
+  syncConsultantRecordingUI();
 
   try {
     await loadEvents();

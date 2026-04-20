@@ -25,12 +25,17 @@
 
     <main class="page">
       <section class="panel">
-                <div class="panel-row">
+        <div class="panel-row">
           <div class="field">
             <label for="eventSelect">Event</label>
             <select id="eventSelect">
               <option value="">Loading events…</option>
             </select>
+          </div>
+
+          <div class="field field-toggle">
+            <label>&nbsp;</label>
+            <button id="filterStudentsBtn" class="chip-btn" type="button">Filter Students</button>
           </div>
 
           <div class="field field-toggle">
@@ -47,6 +52,25 @@
     </main>
   </div>
 
+  <div id="studentFilterModal" class="modal hidden">
+    <div class="modal-card filter-modal-card">
+      <div class="modal-header">
+        <h2>Filter Students</h2>
+      </div>
+
+      <div class="filter-actions">
+        <button id="filterSelectAllBtn" class="chip-btn" type="button">Select All</button>
+        <button id="filterClearAllBtn" class="chip-btn" type="button">Clear All</button>
+      </div>
+
+      <div id="studentFilterList" class="student-filter-list"></div>
+
+      <div class="modal-footer">
+        <button id="filterDoneBtn" class="primary-btn" type="button">Done</button>
+      </div>
+    </div>
+  </div>
+
   <div id="editModal" class="modal hidden">
     <div class="modal-card">
       <div class="modal-header">
@@ -61,11 +85,39 @@
         <div id="coachRecommendationBox" class="coach-rec-box hidden">
           <div class="coach-rec-title">Coach recommendation</div>
           <div id="coachRecommendationContent"></div>
+          <div id="coachRecommendationConfidence" class="coach-rec-confidence hidden"></div>
+          <div id="coachRecommendationConfidenceDetail" class="coach-rec-confidence-detail hidden"></div>
         </div>
 
         <div id="coachAudioBox" class="coach-audio-box hidden">
           <div class="coach-audio-title">Coach audio</div>
           <audio id="coachAudioPlayer" controls preload="none"></audio>
+          <label class="inline-check hidden" id="coachVideoReviewedRow">
+            <input id="coachVideoReviewed" type="checkbox" />
+            <span>Coach video reviewed</span>
+          </label>
+        </div>
+
+        <div id="consultantAudioBox" class="coach-audio-box hidden">
+          <div class="coach-audio-title">Consultant audio for coach</div>
+          <audio id="consultantAudioPlayer" controls preload="none"></audio>
+        </div>
+
+        <div class="consultant-audio-actions">
+          <button id="consultantRecordBtn" class="chip-btn" type="button">Record</button>
+          <button id="consultantStopBtn" class="chip-btn" type="button">Stop</button>
+          <button id="consultantPlayBtn" class="chip-btn" type="button">Play</button>
+          <button id="consultantUploadBtn" class="chip-btn" type="button">Upload recording</button>
+          <button id="consultantClearBtn" class="chip-btn" type="button">Clear</button>
+          <label class="file-btn">
+            Choose file
+            <input id="consultantAudioUpload" type="file" accept="audio/*" hidden />
+          </label>
+        </div>
+
+        <div id="consultantAudioPreviewBox" class="coach-audio-box hidden">
+          <div class="coach-audio-title">Recorded consultant audio preview</div>
+          <audio id="consultantAudioPreviewPlayer" controls preload="none"></audio>
         </div>
 
         <label class="field">

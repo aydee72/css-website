@@ -166,6 +166,7 @@ textarea {
   font-size: 16px;
   font-weight: 900;
   margin-bottom: 8px;
+  color: #cfd3ff;
 }
 
 .row {
@@ -174,6 +175,24 @@ textarea {
   gap: 10px;
   padding: 10px 0;
   border-top: 1px solid #22252d;
+  border-left: 3px solid transparent;
+  padding-left: 8px;
+}
+
+.student-group-w {
+  border-left-color: #ffffff;
+}
+
+.student-group-y {
+  border-left-color: #faee15;
+}
+
+.student-group-g {
+  border-left-color: #11c55e;
+}
+
+.student-group-default {
+  border-left-color: #607296;
 }
 
 .bike {
@@ -191,6 +210,23 @@ textarea {
 
 .name {
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  background: #1f2230;
+  color: #cfd3ff;
 }
 
 .last-drill {
@@ -221,8 +257,8 @@ textarea {
 }
 
 .cell-on {
-  border-color: #3a6ea5;
-  background: #101622;
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.2);
 }
 
 .cell-rec {
@@ -267,6 +303,10 @@ textarea {
 
 .cell-icon.audio {
   color: #7fb7ff;
+}
+
+.cell-icon.video {
+  color: #ffd36f;
 }
 
 .modal {
@@ -374,6 +414,21 @@ textarea {
   font-weight: 700;
   margin-top: 2px;
 }
+
+.coach-rec-confidence {
+  margin-top: 8px;
+  color: #d7c7ff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.coach-rec-confidence-detail {
+  margin-top: 4px;
+  color: #f2edff;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .coach-audio-box {
   border: 1px solid #3a6ea5;
   background: #101622;
@@ -390,6 +445,28 @@ textarea {
 
 #coachAudioPlayer {
   width: 100%;
+}
+
+#consultantAudioPlayer {
+  width: 100%;
+}
+
+.inline-check {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #cfd3ff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.consultant-audio-actions {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .hidden {
@@ -438,6 +515,51 @@ textarea {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 14px;
+}
+
+.filter-modal-card {
+  max-width: 560px;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.student-filter-list {
+  margin-top: 10px;
+  max-height: 50vh;
+  overflow: auto;
+  border: 1px solid #22252d;
+  border-radius: 12px;
+  padding: 10px;
+  background: #101216;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.student-filter-item {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 6px 10px;
+  align-items: center;
+  font-size: 14px;
+}
+
+.student-filter-item input {
+  margin: 0;
+}
+
+.student-filter-meta {
+  grid-column: 2;
+  color: #9aa0b5;
+  font-size: 12px;
+}
+
+.muted {
+  color: #9aa0b5;
 }
 
 .warning-list {
