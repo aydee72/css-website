@@ -347,8 +347,43 @@ async function commit() {
         );
       }
     }
+        // Build Level 4 roster (Level 4, Level 4 B, Level 4 G, etc.)
+    const level4Rows = rows.filter((r) =>
+      typeof r.level === "string" && /^Level\s*4\b/i.test(r.level)
+    );
 
-    setStatus(`Done. Synced ${rows.length} students (slot order preserved, ride state follows student).`);
+    setStatus(`Rebuilding Level 4 roster (${level4Rows.length} students)…`);
+
+    const rosterRes = await fetch(`${SUPABASE_URL}/functions/v1/import_roster`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        event_id: eventId,
+        students: level4Rows,
+      }),
+    });
+
+    const rosterText = await rosterRes.text();
+
+    let rosterJson;
+    try {
+      rosterJson = JSON.parse(rosterText);
+    } catch {
+      rosterJson = rosterText;
+    }
+
+    if (!rosterRes.ok) {
+      throw new Error(
+        typeof rosterJson === "string"
+          ? rosterJson
+          : rosterJson?.error || rosterJson?.message || `Roster rebuild failed (${rosterRes.status})`
+      );
+    }
+
+    setStatus("Roster rebuild complete.");
   } catch (e) {
     console.error(e);
     setStatus(`Error: ${e.message}`);
