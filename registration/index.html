@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CSSApp Registration</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1>Registration</h1>
+      </div>
+      <div class="topbar-right">
+        <button id="syncJotform" class="secondary-btn">Sync Jotform</button>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="panel">
+        <div class="panel-row">
+          <div class="field">
+            <label>Supabase Events (today + future)</label>
+            <select id="eventSelect"></select>
+          </div>
+          <div class="field field-toggle">
+            <span id="eventStatus" class="muted"></span>
+            <span id="status" class="status-area"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <input id="studentSearch" type="text" placeholder="Search student or bike..." />
+      </div>
+
+      <div id="students" class="registration-list"></div>    </main>
+  </div>
+
+  <div id="matchModal" class="modal hidden">
+    <div class="modal-card filter-modal-card">
+      <div class="modal-header">
+        <h2>Match Registration</h2>
+      </div>
+
+      <p id="modalStudentName" class="modal-hint"></p>
+
+      <div id="currentMatchBox" class="current-match-box hidden">
+        <div id="currentMatchText" class="current-match-title"></div>
+        <div class="filter-actions">
+          <button id="changeMatch" class="secondary-btn">Change Match</button>
+          <button id="clearMatch" class="secondary-btn">Clear Match</button>
+        </div>
+      </div>
+
+      <div id="matchChoices">
+        <input id="searchInput" type="text" placeholder="Search name..." />
+        <div id="jotformChoices" class="student-filter-list"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="doneModal" class="secondary-btn">Done</button>
+        <button id="cancelModal" class="secondary-btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

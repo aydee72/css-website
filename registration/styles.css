@@ -1,0 +1,310 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #0b0b0c;
+  color: #fff;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+body {
+  min-height: 100vh;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.topbar {
+  height: 64px;
+  background: #111216;
+  border-bottom: 1px solid #2a2c33;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  gap: 16px;
+}
+
+.topbar-left,
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.secondary-btn {
+  border: 0;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 10px;
+  font-weight: 800;
+  background: #1a1c22;
+  color: #cfd3ff;
+  padding: 10px 14px;
+}
+
+.secondary-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.page {
+  padding: 16px;
+}
+
+.panel {
+  background: #14161b;
+  border: 1px solid #22252d;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.panel-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-toggle {
+  justify-content: flex-end;
+}
+
+.field label,
+.field span {
+  color: #9aa0b5;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+select,
+input {
+  background: #0f1013;
+  color: #fff;
+  border: 1px solid #2a2c33;
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 14px;
+}
+
+select {
+  min-width: 320px;
+}
+
+.status-area {
+  margin-top: 12px;
+  color: #9aa0b5;
+}
+
+.status-error {
+  color: #ffb3b3;
+}
+
+.registration-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.registration-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #2a2c33;
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.registration-row-matched {
+  opacity: 1 ;
+}
+
+.registration-row-unmatched {
+  background: #14161b;
+}
+
+.registration-group-w {
+  border-left: 6px solid #ffffff;
+}
+
+.registration-group-y {
+  border-left: 6px solid #faee15;
+}
+
+.registration-group-g {
+  border-left: 6px solid #11c55e;
+}
+
+.registration-bike {
+  width: 52px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.registration-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.status-button {
+  min-width: 74px;
+  text-align: center;
+  border: 1px solid #2a2c33;
+  border-radius: 9px;
+  padding: 7px 9px;
+  background: #1a1c22;
+  color: #cfd3ff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.status-button-readonly {
+  cursor: default;
+  opacity: 0.95;
+}
+
+.status-yes {
+  color: #1f9d55;
+}
+
+.status-no {
+  color: #d74a4a;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modal.hidden,
+.hidden {
+  display: none;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow: auto;
+  background: #14161b;
+  border: 1px solid #22252d;
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.modal-hint {
+  color: #9aa0b5;
+  margin: 8px 0 12px;
+  font-weight: 700;
+}
+
+.current-match-box {
+  border: 1px solid #2a2c33;
+  background: #173424;
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+.current-match-title {
+  font-weight: 900;
+  color: #fff;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.student-filter-list {
+  margin-top: 10px;
+  max-height: 50vh;
+  overflow: auto;
+  border: 1px solid #22252d;
+  border-radius: 12px;
+  padding: 10px;
+  background: #101216;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.student-filter-item {
+  border: 1px solid #22252d;
+  border-radius: 12px;
+  padding: 10px;
+  background: #151922;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.muted {
+  color: #9aa0b5;
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    height: auto;
+    padding: 12px 16px;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .topbar-left,
+  .topbar-right {
+    flex-wrap: wrap;
+  }
+
+  select {
+    min-width: 220px;
+    width: 100%;
+  }
+
+  .registration-row {
+    flex-wrap: wrap;
+  }
+
+  .registration-name {
+    flex-basis: calc(100% - 62px);
+  }
+}
