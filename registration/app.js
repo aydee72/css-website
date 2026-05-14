@@ -337,7 +337,8 @@ function levelHireSuffix(value) {
 }
 
 function shouldAutoCompleteScrutineering(student) {
-  return Boolean(levelHireSuffix(student && student.level));
+  const suffix = levelHireSuffix(student && student.level);
+  return suffix.includes("B");
 }
 
 function levelDisplay(value) {
