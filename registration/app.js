@@ -345,7 +345,22 @@ function filteredStudents() {
 }
 
 
+function renderRegistrationSummary() {
+  const summary = el("registrationSummary");
+  if (!summary) return;
+
+  const total = students.length;
+  const registrationCount = students.filter((student) => student.registration_checked).length;
+  const scrutineeringCount = students.filter((student) => student.general_scrutineering_checked).length;
+  const formCount = students.filter((student) => isMatched(student)).length;
+  const manualFormCount = students.filter((student) => student.manual_form_checked).length;
+
+  summary.textContent = `Reg: ${registrationCount}/${total}   Scrut: ${scrutineeringCount}/${total}   Form: ${formCount}/${total}   Manual: ${manualFormCount}/${total}`;
+}
+
 function renderStudents() {
+  renderRegistrationSummary();
+
   const container = el("students");
   container.innerHTML = "";
 
