@@ -153,7 +153,7 @@ async function loadRegistrationData(eventId, silent = false) {
   try {
     const [studentData, jotformData, matchData] = await Promise.all([
       supabaseFetch(
-`/rest/v1/course_control_students?select=id,event_id,student_name,bike,group_code,registration_checked,general_scrutineering_checked,manual_form_checked&event_id=eq.${encodeURIComponent(eventId)}`      ),
+`/rest/v1/course_control_students?select=id,event_id,student_name,bike,level,group_code,registration_checked,general_scrutineering_checked,manual_form_checked&event_id=eq.${encodeURIComponent(eventId)}`      ),
       supabaseFetch(
         `/rest/v1/jotform_registrations?select=jotform_submission_id,full_name,event_id,event_date&event_id=eq.${encodeURIComponent(eventId)}&event_date=eq.${events.find(e => e.id === eventId)?.event_date}`
       ),
@@ -284,6 +284,25 @@ function groupClass(groupCode) {
   return "";
 }
 
+function levelDisplay(value) {
+  const raw = norm(value);
+  if (!raw) return "";
+
+  const match = raw.match(/^(.*?)\s+(BG|GB|B|G)$/i);
+  if (!match) return raw;
+
+  const baseLevel = norm(match[1]);
+  const suffix = match[2].toUpperCase();
+  const hasBikeHire = suffix.includes("B");
+  const hasGearHire = suffix.includes("G");
+
+  if (hasBikeHire && hasGearHire) return `${baseLevel} • Bike + Gear Hire`;
+  if (hasBikeHire) return `${baseLevel} • Bike Hire`;
+  if (hasGearHire) return `${baseLevel} • Gear Hire`;
+
+  return raw;
+}
+
 function filteredStudents() {
   const query = norm(el("studentSearch")?.value).toLowerCase();
 
@@ -322,7 +341,21 @@ function renderStudents() {
 
     const name = document.createElement("div");
     name.className = "registration-name";
-    name.textContent = norm(student.student_name);
+
+    const studentName = document.createElement("div");
+    studentName.textContent = norm(student.student_name);
+    name.appendChild(studentName);
+
+    const level = levelDisplay(student.level);
+    if (level) {
+      const levelText = document.createElement("div");
+      levelText.textContent = level;
+      levelText.style.fontSize = "13px";
+      levelText.style.fontWeight = "700";
+      levelText.style.color = "#9aa0b5";
+      levelText.style.marginTop = "3px";
+      name.appendChild(levelText);
+    }
 
     const reg = document.createElement("button");
     reg.type = "button";
