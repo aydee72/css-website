@@ -44,13 +44,29 @@ function bikeSortValue(value) {
   return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
 }
 
-function todaySydneyYYYYMMDD() {
-  return new Intl.DateTimeFormat("en-CA", {
+function currentEventStartDateSydneyYYYYMMDD() {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Australia/Sydney",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date());
+    hour: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(now).map((part) => [part.type, part.value]));
+  const date = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
+
+  if (Number(parts.hour) >= 15) {
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
 function setStatus(message, isError = false) {
@@ -104,13 +120,22 @@ function eventLabel(event) {
   return event.code || event.name || event.event_date || "Event";
 }
 
+function selectedEventLabel() {
+  const event = events.find((item) => item.id === selectedEventId);
+  return event ? `Event: ${event.event_date || ""} — ${eventLabel(event)}` : "";
+}
+
+function defaultEventId() {
+  return events[0]?.id || "";
+}
+
 async function loadEvents() {
   setEventStatus("Loading…");
 
   try {
-    const today = todaySydneyYYYYMMDD();
+    const startDate = currentEventStartDateSydneyYYYYMMDD();
     events = await supabaseFetch(
-      `/rest/v1/events?select=id,event_date,name,code&event_date=gte.${today}&order=event_date.asc`
+      `/rest/v1/events?select=id,event_date,name,code&event_date=gte.${startDate}&order=event_date.asc`
     );
 
     const select = el("eventSelect");
@@ -134,9 +159,11 @@ async function loadEvents() {
       select.appendChild(option);
     });
 
-    selectedEventId = selectedEventId || events[0].id;
+    selectedEventId = events.some((event) => event.id === selectedEventId)
+      ? selectedEventId
+      : defaultEventId();
     select.value = selectedEventId;
-    setEventStatus(`${events.length} events`);
+    setEventStatus(selectedEventLabel());
     await loadRegistrationData(selectedEventId);
     startLiveRefresh(selectedEventId);
   } catch (error) {
@@ -716,8 +743,19 @@ async function syncJotform() {
 
 el("eventSelect").addEventListener("change", async (event) => {
   selectedEventId = event.target.value;
+  setEventStatus(selectedEventLabel());
   await loadRegistrationData(selectedEventId);
   startLiveRefresh(selectedEventId);
+  el("eventModal").classList.add("hidden");
+});
+
+el("changeEvent").addEventListener("click", () => {
+  el("eventSelect").value = selectedEventId;
+  el("eventModal").classList.remove("hidden");
+});
+
+el("closeEventModal").addEventListener("click", () => {
+  el("eventModal").classList.add("hidden");
 });
 
 el("syncJotform").addEventListener("click", syncJotform);
