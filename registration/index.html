@@ -22,7 +22,10 @@
 
     <main class="page">
       <div class="panel">
-        <input id="studentSearch" type="text" placeholder="Search student or bike..." />
+        <div class="filter-controls">
+          <input id="studentSearch" type="text" placeholder="Search student or bike..." />
+          <button id="noShowsFilter" class="filter-toggle-button" type="button" aria-pressed="false">No Shows</button>
+        </div>
       </div>
 
       <div id="registrationSummary" class="registration-summary"></div>

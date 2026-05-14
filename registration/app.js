@@ -11,6 +11,7 @@ let jotforms = [];
 let matches = [];
 let selectedStudent = null;
 let showMatchChoices = false;
+let showNoShowsOnly = false;
 let liveRefreshTimer = null;
 let liveRefreshBusy = false;
 
@@ -362,14 +363,22 @@ function levelDisplay(value) {
 function filteredStudents() {
   const query = norm(el("studentSearch")?.value).toLowerCase();
 
-  if (!query) return sortedStudents();
+  let filtered = sortedStudents();
 
-  return sortedStudents().filter((student) => {
-    const name = norm(student.student_name).toLowerCase();
-    const bike = norm(student.bike).toLowerCase();
+  if (showNoShowsOnly) {
+    filtered = filtered.filter((student) => student.registration_checked !== true);
+  }
 
-    return name.includes(query) || bike.includes(query);
-  });
+  if (query) {
+    filtered = filtered.filter((student) => {
+      const name = norm(student.student_name).toLowerCase();
+      const bike = norm(student.bike).toLowerCase();
+
+      return name.includes(query) || bike.includes(query);
+    });
+  }
+
+  return filtered;
 }
 
 
@@ -393,6 +402,10 @@ function renderRegistrationSummary() {
 
 function renderStudents() {
   renderRegistrationSummary();
+
+  const noShowsFilter = el("noShowsFilter");
+  noShowsFilter?.classList.toggle("active", showNoShowsOnly);
+  noShowsFilter?.setAttribute("aria-pressed", String(showNoShowsOnly));
 
   const container = el("students");
   container.innerHTML = "";
@@ -776,5 +789,9 @@ el("changeMatch").addEventListener("click", () => {
 el("searchInput").addEventListener("input", renderMatchChoices);
 
 el("studentSearch")?.addEventListener("input", renderStudents);
+el("noShowsFilter")?.addEventListener("click", () => {
+  showNoShowsOnly = !showNoShowsOnly;
+  renderStudents();
+});
 
 loadEvents();
