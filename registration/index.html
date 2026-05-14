@@ -13,24 +13,14 @@
         <h1>Registration</h1>
       </div>
       <div class="topbar-right">
+        <span id="eventStatus" class="muted"></span>
+        <span id="status" class="status-area"></span>
+        <button id="changeEvent" class="secondary-btn">Change Event</button>
         <button id="syncJotform" class="secondary-btn">Sync Jotform</button>
       </div>
     </header>
 
     <main class="page">
-      <div class="panel">
-        <div class="panel-row">
-          <div class="field">
-            <label>Supabase Events (today + future)</label>
-            <select id="eventSelect"></select>
-          </div>
-          <div class="field field-toggle">
-            <span id="eventStatus" class="muted"></span>
-            <span id="status" class="status-area"></span>
-          </div>
-        </div>
-      </div>
-
       <div class="panel">
         <input id="studentSearch" type="text" placeholder="Search student or bike..." />
       </div>
@@ -38,6 +28,23 @@
       <div id="registrationSummary" class="registration-summary"></div>
 
       <div id="students" class="registration-list"></div>    </main>
+  </div>
+
+  <div id="eventModal" class="modal hidden">
+    <div class="modal-card event-modal-card">
+      <div class="modal-header">
+        <h2>Change Event</h2>
+      </div>
+
+      <div class="field">
+        <label for="eventSelect">Event</label>
+        <select id="eventSelect"></select>
+      </div>
+
+      <div class="modal-footer">
+        <button id="closeEventModal" class="secondary-btn">Done</button>
+      </div>
+    </div>
   </div>
 
   <div id="matchModal" class="modal hidden">

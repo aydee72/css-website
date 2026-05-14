@@ -82,6 +82,10 @@ body {
   margin-bottom: 16px;
 }
 
+.panel > input {
+  width: 100%;
+}
+
 .panel-row {
   display: flex;
   gap: 16px;
@@ -122,6 +126,10 @@ select {
 .status-area {
   margin-top: 12px;
   color: #9aa0b5;
+}
+
+.topbar .status-area {
+  margin-top: 0;
 }
 
 .status-error {
@@ -268,6 +276,14 @@ select {
   color: #fff;
 }
 
+.event-modal-card {
+  max-width: 420px;
+}
+
+.event-modal-card select {
+  width: 100%;
+}
+
 .filter-actions {
   display: flex;
   gap: 8px;
@@ -310,14 +326,24 @@ select {
 @media (max-width: 900px) {
   .topbar {
     height: auto;
-    padding: 12px 16px;
-    align-items: flex-start;
+    padding: 10px 12px;
+    align-items: stretch;
     flex-direction: column;
+    gap: 8px;
   }
 
   .topbar-left,
   .topbar-right {
     flex-wrap: wrap;
+  }
+
+  .page {
+    padding: 10px;
+  }
+
+  .panel {
+    padding: 10px;
+    margin-bottom: 10px;
   }
 
   select {
