@@ -383,6 +383,31 @@ async function commit() {
       );
     }
 
+    const peopleMap = rosterJson?.peopleMap || [];
+
+    const personIdByName = {};
+    peopleMap.forEach((p) => {
+      if (p.student_name && p.person_id) {
+        personIdByName[p.student_name.trim().toLowerCase()] = p.person_id;
+      }
+    });
+
+    for (const row of rows) {
+      const key = String(row.student_name || "").trim().toLowerCase();
+      const personId = personIdByName[key];
+
+      if (personId) {
+        await supabaseFetch(
+          `/rest/v1/course_control_students?event_id=eq.${eventId}&student_name=eq.${encodeURIComponent(row.student_name)}`,
+          {
+            method: "PATCH",
+            body: { person_id: personId },
+            prefer: "return=minimal",
+          }
+        );
+      }
+    }
+
     setStatus("Roster rebuild complete.");
   } catch (e) {
     console.error(e);
