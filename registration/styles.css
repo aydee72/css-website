@@ -86,6 +86,35 @@ body {
   width: 100%;
 }
 
+.filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.filter-controls input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.filter-toggle-button {
+  border: 1px solid #2a2c33;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #1a1c22;
+  color: #cfd3ff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter-toggle-button.active {
+  border-color: #1f9d55;
+  background: #173424;
+  color: #ffffff;
+}
+
 .panel-row {
   display: flex;
   gap: 16px;
@@ -344,6 +373,14 @@ select {
   .panel {
     padding: 10px;
     margin-bottom: 10px;
+  }
+
+  .filter-controls {
+    flex-wrap: wrap;
+  }
+
+  .filter-toggle-button {
+    flex: 1 0 auto;
   }
 
   select {
