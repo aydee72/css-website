@@ -162,9 +162,29 @@ async function loadRegistrationData(eventId, silent = false) {
       ),
     ]);
 
-    students = studentData || [];
+    students = (studentData || []).map((student) =>
+      shouldAutoCompleteScrutineering(student)
+        ? { ...student, general_scrutineering_checked: true }
+        : student
+    );
     jotforms = jotformData || [];
     matches = matchData || [];
+
+    const autoScrutineeringUpdates = (studentData || []).filter(
+      (student) => shouldAutoCompleteScrutineering(student) && !student.general_scrutineering_checked
+    );
+
+    if (autoScrutineeringUpdates.length) {
+      await Promise.all(
+        autoScrutineeringUpdates.map((student) =>
+          supabaseFetch(`/rest/v1/course_control_students?id=eq.${encodeURIComponent(student.id)}`, {
+            method: "PATCH",
+            body: { general_scrutineering_checked: true },
+            prefer: "return=minimal",
+          })
+        )
+      );
+    }
 
     if (!silent) {
       setStatus("");
@@ -284,15 +304,23 @@ function groupClass(groupCode) {
   return "";
 }
 
+function levelHireSuffix(value) {
+  const match = norm(value).match(/^(.*?)\s+(BG|GB|B|G)$/i);
+  return match ? match[2].toUpperCase() : "";
+}
+
+function shouldAutoCompleteScrutineering(student) {
+  return Boolean(levelHireSuffix(student && student.level));
+}
+
 function levelDisplay(value) {
   const raw = norm(value);
   if (!raw) return "";
 
-  const match = raw.match(/^(.*?)\s+(BG|GB|B|G)$/i);
-  if (!match) return raw;
+  const suffix = levelHireSuffix(raw);
+  if (!suffix) return raw;
 
-  const baseLevel = norm(match[1]);
-  const suffix = match[2].toUpperCase();
+  const baseLevel = norm(raw.replace(/\s+(BG|GB|B|G)$/i, ""));
   const hasBikeHire = suffix.includes("B");
   const hasGearHire = suffix.includes("G");
 
