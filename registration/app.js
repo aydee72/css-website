@@ -716,4 +716,6 @@ el("changeMatch").addEventListener("click", () => {
 });
 el("searchInput").addEventListener("input", renderMatchChoices);
 
+el("studentSearch")?.addEventListener("input", renderStudents);
+
 loadEvents();
